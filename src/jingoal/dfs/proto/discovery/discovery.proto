@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package discovery;
+// This file contains a set of protocol buffer messages 
+// which define the server discovery APIs between dfs client and it's server
+
+// Dfs Server 
+message DfsServer {
+    enum Status {
+        ONLINE  = 0;
+        USED    = 1;
+        GOAWAY  = 2; // will be down
+        OFFLINE = 3;
+    }
+
+    string id     = 1;
+    string uri    = 2; // ip:port
+    int32 weight  = 3;
+    int32 load    = 4;
+    int64 free    = 5; // free disk space
+    Status status = 6;
+}
+
+// DfsClient represents client info.
+message DfsClient {
+    string id  = 1;
+    string uri = 2; // ip:port
+}
+
+// The request message to get dfs server list.
+message GetDfsServersReq {
+    DfsClient client = 1;
+}
+
+// The reply message to get dfs server list.
+message GetDfsServersRep {
+    DfsServer server = 1;
+}
+
+// Discovery service definition.
+service DiscoveryService {
+    // To get sever list by dfs client.
+    rpc GetDfsServers(GetDfsServersReq) returns (stream GetDfsServersRep){} 
+}

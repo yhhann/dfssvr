@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package transfer;
+
+// This file contains a set of protocol buffer messages 
+// which define the file transfer APIs between dfs client and it's server
+
+// FileInfo represents file metadata.
+message FileInfo{
+    string id    = 1;
+    string name  = 2;
+    int64 size   = 3;
+    int64 domain = 4;
+    int64 user   = 5;
+    string md5   = 6;
+}
+
+// Chunk represents the segment of file content.
+message Chunk {
+    int64 pos       = 1;
+    int64 length    = 2;
+    bytes payload   = 3;
+}
+
+// The request message to negotiate chunk size.
+message NegotiateChunkSizeReq {
+   int64 size = 1;
+}
+
+// The reply message to negotiate chunk size.
+message NegotiateChunkSizeRep {
+   int64 size = 1;
+}
+
+// The request message to put file.
+message PutFileReq {
+    FileInfo info = 1;
+    Chunk chunk   = 2;
+}
+
+// The reply message to put file.
+message PutFileRep {
+    FileInfo file = 1;
+}
+
+// The request message to get file.
+message GetFileReq {
+    string id    = 1;
+    int64 domain = 2;
+}
+
+// The reply message to get file.
+message GetFileRep {
+    Chunk chunk = 1;
+}
+
+// File transfer service definition.
+service FileTransfer{
+    // To negotiate the chunk size between client and server.
+    rpc NegotiateChunkSize (NegotiateChunkSizeReq) returns (NegotiateChunkSizeRep) {}
+
+    // Put file from client to server.
+    rpc PutFile (stream PutFileReq) returns (PutFileRep) {}
+
+    // Get file from server to client.
+    rpc GetFile (GetFileReq) returns (stream GetFileRep) {}
+}
