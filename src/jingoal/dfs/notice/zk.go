@@ -140,12 +140,12 @@ func (k *DfsZK) createEphemeralSequenceNode(prefix string, data []byte) (string,
 
 // Register registers a server.
 // if check is true, the returned chan will be noticed when sibling changed.
-func (k *DfsZK) Register(prefix string, data []byte, check bool) (string, <-chan []byte, <-chan error) {
+func (k *DfsZK) Register(prefix string, data []byte, startCheckRoutine bool) (string, <-chan []byte, <-chan error) {
 	siblings, errs := k.CheckChildren(filepath.Dir(prefix))
 
 	results := make(chan []byte)
 	errors := make(chan error)
-	if check {
+	if startCheckRoutine {
 		go func() {
 			for {
 				select {

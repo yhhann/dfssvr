@@ -17,5 +17,5 @@ type Notice interface {
 	// Register registers a server. returned chan will be noticed
 	// when its sibling nodes changed. If check is true,
 	// will start a routine to process the nodes change, otherwise not.
-	Register(prefix string, data []byte, check bool) (string, <-chan []byte, <-chan error)
+	Register(prefix string, data []byte, startCheckRoutine bool) (string, <-chan []byte, <-chan error)
 }
