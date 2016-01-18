@@ -42,7 +42,7 @@ func (rs *RandSelector) AddServer(s *DfsServer) {
 func NewRandSelector() *RandSelector {
 	rs := new(RandSelector)
 	rs.serverMap = make(map[string]*DfsServer)
-	rs.serverIds = make([]string, 0)
+	rs.serverIds = make([]string, 0, 10)
 
 	return rs
 }

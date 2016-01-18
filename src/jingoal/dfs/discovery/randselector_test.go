@@ -30,18 +30,3 @@ func TestGetPerfectServer(t *testing.T) {
 		<-done
 	}
 }
-
-func TestLenCap(t *testing.T) {
-	ss := make([]string, 10)
-	for i := 0; i < 4; i++ {
-		ss[i] = fmt.Sprintf("%d", i)
-	}
-
-	if cap(ss) != 10 {
-		t.Error("cap is not 10")
-	}
-
-	if len(ss) != 10 {
-		t.Error("len is not 10")
-	}
-}

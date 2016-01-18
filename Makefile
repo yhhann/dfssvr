@@ -1,6 +1,6 @@
 export GOPATH := ${GOPATH}:$(shell pwd)
 
-all:
+all: dfs
 	@echo "make dfs          : build dfs"
 	@echo "make tools        : build tools"
 	@echo "make fmt          : run go fmt tool"
@@ -9,10 +9,6 @@ all:
 dfs: fmt
 	go install jingoal/dfs/cmd/dfs/dfscln
 	go install jingoal/dfs/cmd/dfs/dfssvr
-	go install jingoal/dfs/cmd/utils/parsechunks
-
-tools: fmt
-	go install jingoal/dfs/cmd/gfapitest
 
 fmt:
 #	go fmt jingoal/dfs/cmd/dfs

@@ -48,19 +48,19 @@ func (r *ZKDfsServerRegister) Register(s *DfsServer) error {
 		return err
 	}
 
-	// Register the server.
+	// Register server
 	_, data, errors := r.notice.Register(dfsPath, serverData, true /*startCheckRoutine*/)
 
 	go func() {
 		for {
 			select {
-			case changedServer := <-data: // get changed server and update serverMap.
-				var server DfsServer
-				if err := json.Unmarshal(changedServer, &server); err != nil {
+			case changedServer := <-data: // Get changed server and update serverMap.
+				server := new(DfsServer)
+				if err := json.Unmarshal(changedServer, server); err != nil {
 					log.Printf("json.Unmarshal error: %v", err)
 					continue
 				}
-				r.putDfsServerToMap(&server)
+				r.putDfsServerToMap(server)
 			case err := <-errors:
 				log.Printf("notice routine error %v", err)
 				if r.registered {

@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	DefaultChunkSize = 4096
+	DefaultChunkSizeInBytes = 4096
 )
 
 type dfsFileMode uint
