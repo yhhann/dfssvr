@@ -74,9 +74,21 @@ func TestFindAllShards(t *testing.T) {
 		t.Errorf("init server col error: %v\n", err)
 	}
 
-	servers := sop.FindAllShards()
-	if len(servers) != 4 {
+	shards := sop.FindAllShards()
+	if len(shards) != 5 {
 		t.Errorf("find all servers error: %v\n", err)
+	}
+
+	found := false
+	for _, shard := range shards {
+		if shard.ShdType == DegradeServer {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("degrade server not found.")
 	}
 }
 

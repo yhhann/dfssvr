@@ -5,6 +5,14 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
+const (
+	RegularServer ShardType = iota // Regular server.
+	DegradeServer                  // Degrade server.
+)
+
+// ShardType represents the type of a shard.
+type ShardType uint
+
 // Segment represents an interval of domain. Normally, files of these
 // domains are located at NormalServer, when migrating files, the destination
 // site is MigrateServer.
@@ -27,6 +35,7 @@ type Shard struct {
 	VolHost     string        `bson:"volHost,omitempty"`     // gfapi volume host
 	VolName     string        `bson:"volName,omitempty"`     // gfapi volume name
 	VolBase     string        `bson:"volBase,omitempty"`     // gfapi base dir
+	ShdType     ShardType     `bson:"shdType,omitempty"`     // shard type
 }
 
 // Event represents an event, such as a successful reading or an other error.
@@ -38,23 +47,4 @@ type Event struct {
 	ThreadId    string        `bson:"threadId"`    // thread id
 	Description string        `bson:"description"` // description
 	Domain      int64         `bson:"domain"`      // domain
-}
-
-// FindPerfectSegment finds a perfect segment for domain.
-// Segments must be in ascending order.
-func FindPerfectSegment(segments []*Segment, domain int64) *Segment {
-	var result *Segment
-	for _, seg := range segments {
-		if domain > seg.Domain {
-			result = seg
-			continue
-		} else if domain == seg.Domain {
-			result = seg
-			break
-		} else {
-			break
-		}
-	}
-
-	return result
 }

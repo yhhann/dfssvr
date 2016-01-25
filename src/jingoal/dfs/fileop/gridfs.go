@@ -18,6 +18,11 @@ type GridFsHandler struct {
 	session *mgo.Session
 }
 
+// Name returns handler's name.
+func (h *GridFsHandler) Name() string {
+	return h.Shard.Name
+}
+
 // Create creates a DFSFile for write with the given file info.
 func (h *GridFsHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 	file, err := h.gridfs.Create(info.Name)

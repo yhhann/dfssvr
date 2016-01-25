@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,39 +32,7 @@ const (
 type DFSServer struct {
 	mOp      metadata.MetaOp
 	register discovery.Register
-	handlers map[string]fileop.DFSFileHandler
-	segments []*metadata.Segment
-}
-
-func (s *DFSServer) initStoreServers() error {
-	shards := s.mOp.FindAllShards()
-	s.handlers = make(map[string]fileop.DFSFileHandler)
-
-	for _, shard := range shards {
-		s.updateHandlers(shard)
-	}
-	return nil
-}
-
-func (s *DFSServer) updateHandlers(shard *metadata.Shard) {
-	var handler fileop.DFSFileHandler
-	var err error
-	if len(shard.VolHost) != 0 && len(shard.VolName) != 0 { // GlusterFS
-		handler, err = fileop.NewGlusterHandler(shard, filepath.Join(*logDir, shard.Name))
-	} else { // GridFS
-		handler, err = fileop.NewGridFsHandler(shard)
-	}
-
-	if err != nil {
-		log.Printf("create handler error: %v", err)
-	}
-
-	if h, ok := s.handlers[shard.Name]; ok {
-		h.Close()
-	}
-
-	log.Printf("create handler ok: %+v", shard)
-	s.handlers[shard.Name] = handler
+	selector *HandlerSelector
 }
 
 // GetDfsServers gets a list of DfsServer from server.
@@ -87,44 +54,19 @@ func (s *DFSServer) NegotiateChunkSize(ctx context.Context, req *transfer.Negoti
 	}, nil
 }
 
-// getDfsFileHandler returns perfect file handlers to process file.
-// The first returned handler is for normal handler,
-// and the second one is for file migrating.
-func (s *DFSServer) getDFSFileHandler(domain int64) (*fileop.DFSFileHandler, *fileop.DFSFileHandler, error) {
-	if len(s.handlers) == 0 {
-		return nil, nil, fmt.Errorf("no handler")
-	}
-
-	seg := metadata.FindPerfectSegment(s.segments, domain)
-	if seg == nil {
-		return nil, nil, fmt.Errorf("no perfect server, domain %d", domain)
-	}
-
-	h, ok := s.handlers[seg.NormalServer]
-	if !ok {
-		return nil, nil, fmt.Errorf("no normal site, seg: %+v", seg)
-	}
-
-	m, ok := s.handlers[seg.MigrateServer]
-	if ok {
-		return &h, &m, nil
-	}
-	return &h, nil, nil
-}
-
-func finishRecv(info *transfer.FileInfo, err error, stream transfer.FileTransfer_PutFileServer) error {
-	if err != nil {
+func finishRecv(info *transfer.FileInfo, errStr string, stream transfer.FileTransfer_PutFileServer) error {
+	if errStr == "" {
 		return stream.SendAndClose(
 			&transfer.PutFileRep{
-				File: &transfer.FileInfo{
-					Id: fmt.Sprintf("recv error: %v", err),
-				},
+				File: info,
 			})
 	}
 
 	return stream.SendAndClose(
 		&transfer.PutFileRep{
-			File: info,
+			File: &transfer.FileInfo{
+				Id: fmt.Sprintf("recv error: %s", errStr),
+			},
 		})
 }
 
@@ -137,7 +79,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
-			var returnedErr error
+			var errStr string
 			elapse := time.Now().Sub(startTime).Seconds()
 			if reqInfo != nil {
 				// TODO(hanyh): save a event for create file ok.
@@ -145,10 +87,10 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 			} else {
 				// TODO(hanyh): save a event for create file error.
 				log.Println("recv error: no file info")
-				returnedErr = fmt.Errorf("no file info")
+				errStr = "no file info"
 			}
 
-			return finishRecv(file.GetFileInfo(), returnedErr, stream)
+			return finishRecv(file.GetFileInfo(), errStr, stream)
 		}
 		if err != nil {
 			log.Printf("recv error, file: %s, error: %v\n", reqInfo, err)
@@ -162,15 +104,10 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 				return errors.New("recv error: no file info")
 			}
 
-			nh, mh, err := s.getDFSFileHandler(reqInfo.Domain)
+			handler, err := s.selector.getDFSFileHandlerForWrite(reqInfo.Domain)
 			if err != nil {
-				log.Printf("get handler error, %v", err)
+				log.Printf("get handler for write error: %v", err)
 				return err
-			}
-
-			handler := nh
-			if mh != nil {
-				handler = mh
 			}
 
 			file, err = (*handler).Create(reqInfo)
@@ -189,7 +126,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 	}
 }
 
-func getFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFile, error) {
+func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFile, error) {
 	if mh != nil && nh != nil {
 		file, err := mh.Open(id, domain)
 		if err != nil { // Need not to check mgo.ErrNotFound
@@ -205,9 +142,9 @@ func getFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFil
 
 // GetFile gets a file from server.
 func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransfer_GetFileServer) error {
-	nh, mh, err := s.getDFSFileHandler(req.Domain)
+	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
 	if err != nil {
-		log.Printf("get handler error, %v", err)
+		log.Printf("get handler for read error: %v", err)
 		return err
 	}
 
@@ -216,7 +153,7 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 		m = *mh
 	}
 
-	file, err := getFile(req.Id, req.Domain, *nh, m)
+	file, err := searchFile(req.Id, req.Domain, *nh, m)
 	if err != nil {
 		return err
 	}
@@ -346,13 +283,12 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	server.mOp = mop
 
 	// Fill segment data.
-	server.segments = server.mOp.FindAllSegmentsOrderByDomain()
-	log.Printf("fill segments ok [%+v]", server.segments)
+	segments := server.mOp.FindAllSegmentsOrderByDomain()
+	log.Printf("fill segments ok [%+v]", segments)
 
 	// Initialize storage servers
-	if err := server.initStoreServers(); err != nil {
-		return nil, err
-	}
+	shards := server.mOp.FindAllShards()
+	server.selector, err = NewHandlerSelector(segments, shards)
 	log.Printf("initialize the storage servers ok.")
 
 	// Register self.

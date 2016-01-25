@@ -25,6 +25,11 @@ type GlusterHandler struct {
 	VolLog  string // Log file name of gluster volume
 }
 
+// Name returns handler's name.
+func (h *GlusterHandler) Name() string {
+	return h.Shard.Name
+}
+
 // initVolume initializes gluster volume.
 func (h *GlusterHandler) initVolume() error {
 	h.Volume = new(gfapi.Volume)

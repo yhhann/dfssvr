@@ -39,4 +39,7 @@ type DFSFileHandler interface {
 
 	// Close releases resources the handler holds.
 	Close() error
+
+	// Name returns handler's name.
+	Name() string
 }

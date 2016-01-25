@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package discovery;
 // This file contains a set of protocol buffer messages 
-// which define the server discovery APIs between dfs client and it's server
+// which define the server discovery APIs between dfs client and its server
 
 // Dfs Server 
 message DfsServer {
@@ -12,7 +12,6 @@ message DfsServer {
         GOAWAY  = 2; // will be down
         OFFLINE = 3;
     }
-
     string id     = 1;
     string uri    = 2; // ip:port
     int32 weight  = 3;
@@ -27,18 +26,18 @@ message DfsClient {
     string uri = 2; // ip:port
 }
 
-// The request message to get dfs server list.
+// The message for DfsClient info.
 message GetDfsServersReq {
     DfsClient client = 1;
 }
 
-// The reply message to get dfs server list.
+// The message for DfsServer.
 message GetDfsServersRep {
     DfsServer server = 1;
 }
 
 // Discovery service definition.
 service DiscoveryService {
-    // To get sever list by dfs client.
+    // GetDfsServers returns a list of DfsServer.
     rpc GetDfsServers(GetDfsServersReq) returns (stream GetDfsServersRep){} 
 }
