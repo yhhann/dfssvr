@@ -190,6 +190,80 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 	}
 }
 
+// Remove deletes a file.
+func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq) (*transfer.RemoveFileRep, error) {
+	log.Printf("RemoveFile, Request: %v %s %d\n", req.GetDesc().Desc, req.Id, req.Domain)
+
+	// TODO(hanyh): remove file from proper handler.
+
+	rep := transfer.RemoveFileRep{
+		Result: true, // For test.
+	}
+
+	return &rep, nil
+}
+
+// Duplicate duplicates a file, returns a new fid.
+func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (*transfer.DuplicateRep, error) {
+	log.Printf("Duplicate, Request: %s, %d\n", req.Id, req.Domain)
+
+	// TODO(hanyh): duplicate file from proper handler.
+
+	rep := transfer.DuplicateRep{
+		Id: fmt.Sprintf("%s--dupl", req.Id), // For test.
+	}
+	return &rep, nil
+}
+
+// Exist checks existentiality of a file.
+func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (*transfer.ExistRep, error) {
+	log.Printf("Exist, Request: %s, %d\n", req.Id, req.Domain)
+
+	// TODO(hanyh):
+
+	rep := transfer.ExistRep{
+		Result: true,
+	}
+	return &rep, nil
+}
+
+// GetByMd5 gets a file by its md5.
+func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.GetByMd5Rep, error) {
+	log.Printf("GetByMd5, Request: %s, %d, %d\n", req.Md5, req.Domain, req.Size)
+
+	// TODO(hanyh):
+
+	rep := transfer.GetByMd5Rep{
+		Fid: "for-test-id", // For test.
+	}
+	return &rep, nil
+}
+
+// ExistByMd5 checks existentiality of a file.
+func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.ExistRep, error) {
+	log.Printf("ExistByMd5, Request: %s, %d, %d\n", req.Md5, req.Domain, req.Size)
+
+	// TODO(hanyh):
+
+	rep := transfer.ExistRep{
+		Result: true, // For test.
+	}
+	return &rep, nil
+}
+
+// Copy copies a file and returns its fid.
+func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.CopyRep, error) {
+	log.Printf("Copy, Request: %s, %d, %d, %d, %s\n", req.SrcFid, req.SrcDomain,
+		req.DstDomain, req.DstUid, req.DstBiz)
+
+	// TODO(hanyh):
+
+	rep := transfer.CopyRep{
+		Fid: fmt.Sprintf("%v--copy", req.SrcFid), // For test.
+	}
+	return &rep, nil
+}
+
 func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 	log.Printf("start to register self: %s on %s", name, lsnAddr)
 
@@ -284,18 +358,21 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 
 	// Fill segment data.
 	segments := server.mOp.FindAllSegmentsOrderByDomain()
-	log.Printf("fill segments ok [%+v]", segments)
+	log.Println("Succeeded to fill segments.")
+	for _, seg := range segments {
+		log.Printf("segment: [%+v]", *seg)
+	}
 
 	// Initialize storage servers
 	shards := server.mOp.FindAllShards()
 	server.selector, err = NewHandlerSelector(segments, shards)
-	log.Printf("initialize the storage servers ok.")
+	log.Printf("Succeeded to initialize storage servers.")
 
 	// Register self.
 	if err := server.registerSelf(lsnAddr.String(), name); err != nil {
 		return nil, err
 	}
-	log.Printf("register self ok [%+v], dfs server started.", name)
+	log.Printf("Succeeded to register self[%+v], dfs server started.", name)
 
 	return &server, nil
 }

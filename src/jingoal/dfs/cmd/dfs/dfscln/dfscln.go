@@ -20,6 +20,7 @@ var (
 	serverAddr       = flag.String("server-addr", "127.0.0.1:10000", "server address")
 	chunkSizeInBytes = flag.Int("chunk-size", 1024, "chunk size in bytes")
 	fileCount        = flag.Int("file-count", 10, "file count")
+	domain           = flag.Int64("domain", 2, "domain")
 )
 
 // This is a test client for DFSServer, full function client built in Java.
@@ -95,7 +96,7 @@ func writeFile(conn *grpc.ClientConn, payload []byte) (*transfer.FileInfo, error
 	fileInfo := transfer.FileInfo{
 		Name:   fmt.Sprintf("%v", time.Now().Unix), //*bson.NewObjectId().Hex()*/,
 		Size:   ckSize*10 + 333,
-		Domain: 2,
+		Domain: *domain,
 	}
 
 	// PutFile

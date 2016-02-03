@@ -51,7 +51,7 @@ func (hs *HandlerSelector) updateHandler(shard *metadata.Shard) {
 
 	if shard.ShdType == metadata.DegradeServer {
 		hs.degradeHandler = handler
-		log.Printf("Create degrade handler ok: %+v", shard)
+		log.Printf("Succeeded to create degrade handler, shard: %+v", shard)
 		return
 	}
 
@@ -61,7 +61,7 @@ func (hs *HandlerSelector) updateHandler(shard *metadata.Shard) {
 
 	hs.handlers[shard.Name] = handler
 
-	log.Printf("Succeeded to degrade handler: %+v", shard)
+	log.Printf("Succeeded to create handler, shard: %+v", shard)
 }
 
 // getDfsFileHandler returns perfect file handlers to process file.
