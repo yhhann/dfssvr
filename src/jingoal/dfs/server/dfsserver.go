@@ -20,7 +20,8 @@ import (
 )
 
 var (
-	logDir = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
+	logDir            = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
+	heartbeatInterval = flag.Int("hb-interval", 5, "time interval in seconds of heart beat")
 )
 
 const (
@@ -37,13 +38,74 @@ type DFSServer struct {
 
 // GetDfsServers gets a list of DfsServer from server.
 func (s *DFSServer) GetDfsServers(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
-	for _, pd := range s.register.GetDfsServerMap() {
-		rep := &discovery.GetDfsServersRep{Server: pd}
-		if err := stream.Send(rep); err != nil {
-			log.Printf("send DfsServer %v to client %s error %v", pd, req.GetClient(), err)
-			// TODO(hanyh):process according the err.
+	observer := make(chan struct{}, 100)
+	s.register.AddObserver(observer, req.GetClient().String())
+
+	log.Printf("Client connected successfully, %v", req.GetClient().String())
+
+	ticker := time.NewTicker(time.Duration(1*int64(*heartbeatInterval)) * time.Second)
+outLoop:
+	for {
+		select {
+		case <-observer:
+			if err := s.sendDfsServerMap(req, stream); err != nil {
+				break outLoop
+			}
+
+		case <-ticker.C:
+			if err := s.sendHeartbeat(req, stream); err != nil {
+				break outLoop
+			}
 		}
 	}
+
+	ticker.Stop()
+	s.register.RemoveObserver(observer)
+	log.Printf("Client connection closed, %v", req.GetClient().String())
+
+	return nil
+}
+
+func (s *DFSServer) sendHeartbeat(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
+	rep := &discovery.GetDfsServersRep{
+		GetDfsServerUnion: &discovery.GetDfsServersRep_Hb{
+			Hb: &discovery.Heartbeat{
+				Timestamp: time.Now().Unix(),
+			},
+		},
+	}
+
+	if err := stream.Send(rep); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
+	sm := s.register.GetDfsServerMap()
+	ss := make([]*discovery.DfsServer, 0, len(sm))
+	for _, pd := range sm {
+		// If we detect a server offline, we set its value to nil,
+		// so we must filter nil values out.
+		if pd != nil {
+			ss = append(ss, pd)
+		}
+	}
+
+	rep := &discovery.GetDfsServersRep{
+		GetDfsServerUnion: &discovery.GetDfsServersRep_Sl{
+			Sl: &discovery.DfsServerList{
+				Server: ss,
+			},
+		},
+	}
+
+	if err := stream.Send(rep); err != nil {
+		return err
+	}
+
 	return nil
 }
 

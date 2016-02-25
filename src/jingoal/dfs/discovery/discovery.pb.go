@@ -10,6 +10,8 @@ It is generated from these files:
 
 It has these top-level messages:
 	DfsServer
+	DfsServerList
+	Heartbeat
 	DfsClient
 	GetDfsServersReq
 	GetDfsServersRep
@@ -70,6 +72,31 @@ func (m *DfsServer) Reset()         { *m = DfsServer{} }
 func (m *DfsServer) String() string { return proto.CompactTextString(m) }
 func (*DfsServer) ProtoMessage()    {}
 
+// DfsServerList represents a list of DfsServer.
+type DfsServerList struct {
+	Server []*DfsServer `protobuf:"bytes,1,rep,name=server" json:"server,omitempty"`
+}
+
+func (m *DfsServerList) Reset()         { *m = DfsServerList{} }
+func (m *DfsServerList) String() string { return proto.CompactTextString(m) }
+func (*DfsServerList) ProtoMessage()    {}
+
+func (m *DfsServerList) GetServer() []*DfsServer {
+	if m != nil {
+		return m.Server
+	}
+	return nil
+}
+
+// Heartbeat represents a heartbeat message.
+type Heartbeat struct {
+	Timestamp int64 `protobuf:"varint,1,opt,name=timestamp" json:"timestamp,omitempty"`
+}
+
+func (m *Heartbeat) Reset()         { *m = Heartbeat{} }
+func (m *Heartbeat) String() string { return proto.CompactTextString(m) }
+func (*Heartbeat) ProtoMessage()    {}
+
 // DfsClient represents client info.
 type DfsClient struct {
 	Id  string `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
@@ -98,18 +125,102 @@ func (m *GetDfsServersReq) GetClient() *DfsClient {
 
 // The message for DfsServer.
 type GetDfsServersRep struct {
-	Server []*DfsServer `protobuf:"bytes,1,rep,name=server" json:"server,omitempty"`
+	// Types that are valid to be assigned to GetDfsServerUnion:
+	//	*GetDfsServersRep_Sl
+	//	*GetDfsServersRep_Hb
+	GetDfsServerUnion isGetDfsServersRep_GetDfsServerUnion `protobuf_oneof:"GetDfsServerUnion"`
 }
 
 func (m *GetDfsServersRep) Reset()         { *m = GetDfsServersRep{} }
 func (m *GetDfsServersRep) String() string { return proto.CompactTextString(m) }
 func (*GetDfsServersRep) ProtoMessage()    {}
 
-func (m *GetDfsServersRep) GetServer() []*DfsServer {
+type isGetDfsServersRep_GetDfsServerUnion interface {
+	isGetDfsServersRep_GetDfsServerUnion()
+}
+
+type GetDfsServersRep_Sl struct {
+	Sl *DfsServerList `protobuf:"bytes,1,opt,name=sl,oneof"`
+}
+type GetDfsServersRep_Hb struct {
+	Hb *Heartbeat `protobuf:"bytes,2,opt,name=hb,oneof"`
+}
+
+func (*GetDfsServersRep_Sl) isGetDfsServersRep_GetDfsServerUnion() {}
+func (*GetDfsServersRep_Hb) isGetDfsServersRep_GetDfsServerUnion() {}
+
+func (m *GetDfsServersRep) GetGetDfsServerUnion() isGetDfsServersRep_GetDfsServerUnion {
 	if m != nil {
-		return m.Server
+		return m.GetDfsServerUnion
 	}
 	return nil
+}
+
+func (m *GetDfsServersRep) GetSl() *DfsServerList {
+	if x, ok := m.GetGetDfsServerUnion().(*GetDfsServersRep_Sl); ok {
+		return x.Sl
+	}
+	return nil
+}
+
+func (m *GetDfsServersRep) GetHb() *Heartbeat {
+	if x, ok := m.GetGetDfsServerUnion().(*GetDfsServersRep_Hb); ok {
+		return x.Hb
+	}
+	return nil
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*GetDfsServersRep) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), []interface{}) {
+	return _GetDfsServersRep_OneofMarshaler, _GetDfsServersRep_OneofUnmarshaler, []interface{}{
+		(*GetDfsServersRep_Sl)(nil),
+		(*GetDfsServersRep_Hb)(nil),
+	}
+}
+
+func _GetDfsServersRep_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*GetDfsServersRep)
+	// GetDfsServerUnion
+	switch x := m.GetDfsServerUnion.(type) {
+	case *GetDfsServersRep_Sl:
+		b.EncodeVarint(1<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Sl); err != nil {
+			return err
+		}
+	case *GetDfsServersRep_Hb:
+		b.EncodeVarint(2<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Hb); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("GetDfsServersRep.GetDfsServerUnion has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _GetDfsServersRep_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*GetDfsServersRep)
+	switch tag {
+	case 1: // GetDfsServerUnion.sl
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(DfsServerList)
+		err := b.DecodeMessage(msg)
+		m.GetDfsServerUnion = &GetDfsServersRep_Sl{msg}
+		return true, err
+	case 2: // GetDfsServerUnion.hb
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(Heartbeat)
+		err := b.DecodeMessage(msg)
+		m.GetDfsServerUnion = &GetDfsServersRep_Hb{msg}
+		return true, err
+	default:
+		return false, nil
+	}
 }
 
 func init() {

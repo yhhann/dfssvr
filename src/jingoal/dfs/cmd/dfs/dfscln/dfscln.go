@@ -13,14 +13,16 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"jingoal/dfs/discovery"
 	"jingoal/dfs/transfer"
 )
 
 var (
-	serverAddr       = flag.String("server-addr", "127.0.0.1:10000", "server address")
-	chunkSizeInBytes = flag.Int("chunk-size", 1024, "chunk size in bytes")
-	fileCount        = flag.Int("file-count", 10, "file count")
-	domain           = flag.Int64("domain", 2, "domain")
+	serverAddr            = flag.String("server-addr", "127.0.0.1:10000", "server address")
+	chunkSizeInBytes      = flag.Int("chunk-size", 1024, "chunk size in bytes")
+	fileCount             = flag.Int("file-count", 10, "file count")
+	domain                = flag.Int64("domain", 2, "domain")
+	finalWaitTimeInSecond = flag.Int("final-wait", 10, "the final wait time in seconds")
 )
 
 // This is a test client for DFSServer, full function client built in Java.
@@ -30,6 +32,10 @@ func main() {
 	conn, err := grpc.Dial(*serverAddr, grpc.WithInsecure())
 	if err != nil {
 		log.Fatal("dial error")
+	}
+
+	if err := acceptDfsServer(conn); err != nil {
+		log.Fatal("accept DfsServer error %v", err)
 	}
 
 	ckSize, err := getChunkSize(conn)
@@ -67,6 +73,51 @@ func main() {
 
 	for _ = range done {
 	}
+
+	time.Sleep(time.Duration(*finalWaitTimeInSecond) * time.Second) // For test heartbeat.
+}
+
+func acceptDfsServer(conn *grpc.ClientConn) error {
+	client := discovery.NewDiscoveryServiceClient(conn)
+	stream, err := client.GetDfsServers(context.Background(),
+		&discovery.GetDfsServersReq{
+			Client: &discovery.DfsClient{
+				Id:  "test-client-id",
+				Uri: "127.0.0.1:2222",
+			},
+		})
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			rep, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Printf("accept DfsServer error: %v", err)
+				continue
+			}
+
+			switch union := rep.GetDfsServerUnion.(type) {
+			default:
+				log.Printf("acceptDfsServer error, unexpected type %T", union)
+			case *discovery.GetDfsServersRep_Sl:
+				sl := union.Sl.GetServer()
+				for _, server := range sl {
+					fmt.Printf("server %+v\n", server)
+				}
+
+			// Heartbean can be used for server checking.
+			case *discovery.GetDfsServersRep_Hb:
+				fmt.Printf("heartbeat, server timestamp: %d\n", union.Hb.Timestamp)
+			}
+		}
+	}()
+
+	return nil
 }
 
 func getChunkSize(conn *grpc.ClientConn) (int64, error) {

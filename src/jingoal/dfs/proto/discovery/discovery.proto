@@ -24,6 +24,16 @@ message DfsServer {
     Status status = 6;
 }
 
+// DfsServerList represents a list of DfsServer.
+message DfsServerList {
+    repeated DfsServer server = 1;
+}
+
+// Heartbeat represents a heartbeat message.
+message Heartbeat {
+    int64 timestamp = 1;
+}
+
 // DfsClient represents client info.
 message DfsClient {
     string id  = 1;
@@ -37,7 +47,10 @@ message GetDfsServersReq {
 
 // The message for DfsServer.
 message GetDfsServersRep {
-    repeated DfsServer server = 1;
+    oneof GetDfsServerUnion {
+        DfsServerList sl = 1;
+        Heartbeat     hb = 2;
+    }
 }
 
 // Discovery service definition.

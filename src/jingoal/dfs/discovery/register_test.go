@@ -23,3 +23,29 @@ func TestRegister(t *testing.T) {
 	}
 
 }
+
+func TestObserver(t *testing.T) {
+	r := NewZKDfsServerRegister("127.0.0.1:2181", 1*time.Second)
+	s := DfsServer{Id: "yourServer"}
+	if err := r.Register(&s); err != nil {
+		t.Errorf("register error %v", err)
+	}
+
+	client := make(chan struct{})
+	r.AddObserver(client, "")
+
+	go func() {
+		for v := range client {
+			fmt.Printf("action, %+v\n", v)
+		}
+
+	}()
+
+	r.putDfsServerToMap(&DfsServer{})
+	r.putDfsServerToMap(&DfsServer{})
+	r.RemoveObserver(client)
+	r.putDfsServerToMap(&DfsServer{})
+	r.putDfsServerToMap(&DfsServer{})
+
+	time.Sleep(1 * time.Second)
+}

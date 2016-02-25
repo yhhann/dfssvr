@@ -23,6 +23,12 @@ type Register interface {
 	// GetDfsServerMap returns the map of DfsServer,
 	// which will be updated in realtime.
 	GetDfsServerMap() map[string]*DfsServer
+
+	// AddObserver adds an observer for DfsServer node changed.
+	AddObserver(chan<- struct{}, string)
+
+	// RemoveObserver removes an observer for DfsServer node changed.
+	RemoveObserver(chan<- struct{})
 }
 
 // ZKDfsServerRegister implements the Register interface
@@ -30,6 +36,7 @@ type ZKDfsServerRegister struct {
 	zkAddrs    []string
 	zkTimeout  time.Duration
 	serverMap  map[string]*DfsServer
+	observers  map[chan<- struct{}]string
 	notice     notice.Notice
 	rwmu       sync.RWMutex
 	registered bool
@@ -89,6 +96,30 @@ func (r *ZKDfsServerRegister) putDfsServerToMap(server *DfsServer) {
 	defer r.rwmu.Unlock()
 
 	r.serverMap[server.Id] = server
+
+	// r.observers is a map which key hold channel.
+
+	// When a client invokes method GetDfsServers, a new channel which
+	// attached by the client will be added into r.observers, and when
+	// server detects a client is offline, the channel that client
+	// attached will be removed from r.observers.
+	go func() {
+		for ob := range r.observers {
+			ob <- struct{}{}
+		}
+	}()
+}
+
+// AddObserver adds an observer for DfsServer node changed.
+func (r *ZKDfsServerRegister) AddObserver(observer chan<- struct{}, name string) {
+	observer <- struct{}{}
+	r.observers[observer] = name
+}
+
+// RemoveObserver removes an observer for DfsServer node changed.
+func (r *ZKDfsServerRegister) RemoveObserver(observer chan<- struct{}) {
+	delete(r.observers, observer)
+	close(observer)
 }
 
 func NewZKDfsServerRegister(addrs string, timeout time.Duration) *ZKDfsServerRegister {
@@ -97,6 +128,7 @@ func NewZKDfsServerRegister(addrs string, timeout time.Duration) *ZKDfsServerReg
 	r.zkTimeout = timeout
 	r.notice = notice.NewDfsZK(r.zkAddrs, r.zkTimeout)
 	r.serverMap = make(map[string]*DfsServer)
+	r.observers = make(map[chan<- struct{}]string)
 
 	return r
 }

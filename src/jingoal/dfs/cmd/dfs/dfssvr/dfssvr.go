@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 
+	"jingoal/dfs/discovery"
 	"jingoal/dfs/server"
 	"jingoal/dfs/transfer"
 )
@@ -38,6 +39,7 @@ func main() {
 	defer grpcServer.Stop()
 
 	transfer.RegisterFileTransferServer(grpcServer, cs)
+	discovery.RegisterDiscoveryServiceServer(grpcServer, cs)
 
 	grpcServer.Serve(lis)
 }
