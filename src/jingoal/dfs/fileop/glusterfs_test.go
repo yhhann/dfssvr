@@ -53,7 +53,7 @@ func TestGlusterFs(t *testing.T) {
 		t.Errorf("create file type is not gluster file\n")
 	}
 
-	fid := f.Id()
+	fid := f.info.Id
 	if err := file.Close(); err != nil {
 		t.Errorf("Close write file error %v\n", err)
 	}

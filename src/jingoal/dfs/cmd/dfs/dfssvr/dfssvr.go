@@ -2,7 +2,10 @@ package main
 
 import (
 	"flag"
+	"log"
 	"net"
+	"os"
+	"path/filepath"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
@@ -19,11 +22,51 @@ var (
 	timeout     = flag.Int("zk-timeout", 15000, "zookeeper timeout")
 	shardDbName = flag.String("shard-name", "shard", "shard database name")
 	shardDbUri  = flag.String("shard-dburi", "mongodb://127.0.0.1:27017", "shard database uri")
+	logDir      = flag.String("log-dir", "/var/log/dfs", "The log directory.")
 )
+
+func checkFlags() {
+	if *name == "" {
+		log.Println("Error: flag --server-name is required.")
+		os.Exit(1)
+	}
+	if *lsnAddr == "" {
+		log.Println("Flag --server-addr is required.")
+		os.Exit(2)
+	}
+	if *zkAddr == "" {
+		log.Println("Flag --zk-addr is required.")
+		os.Exit(3)
+	}
+	if *shardDbName == "" {
+		log.Println("Flag --shard-name is required.")
+		os.Exit(4)
+	}
+	if *shardDbUri == "" {
+		log.Println("Flag --shard-dburi is required.")
+		os.Exit(5)
+	}
+}
+
+func setupLog() {
+	if _, err := os.Stat(*logDir); os.IsNotExist(err) {
+		if err = os.MkdirAll(*logDir, 0700); err != nil {
+			log.Fatalf("Failed to create log directory: %v", err)
+		}
+	}
+	f, err := os.OpenFile(filepath.Join(*logDir, "dfs-server.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Error opening log file: %v", err)
+	}
+
+	log.SetOutput(f)
+}
 
 // This is a DFSServer instance.
 func main() {
 	flag.Parse()
+	checkFlags()
+	setupLog()
 
 	lis, err := net.Listen("tcp", *lsnAddr)
 	if err != nil {

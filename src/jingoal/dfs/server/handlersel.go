@@ -1,28 +1,51 @@
 package server
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"jingoal/dfs/fileop"
 	"jingoal/dfs/metadata"
 )
-
-type handlerStatus uint
 
 const (
 	statusOk      handlerStatus = iota // handler for shard is ok.
 	statusFailure                      // handler for shard is failure.
 )
 
+var (
+	healthCheckInterval = flag.Int("health-check-interval", 30, "health check interval in seconds")
+	healthCheckTimeout  = flag.Int("health-check-timeout", 5, "health check timeout in seconds")
+)
+
+type handlerStatus uint
+
+func NewHandlerStatus(v bool) handlerStatus {
+	if v {
+		return statusOk
+	}
+
+	return statusFailure
+}
+
+func (hs handlerStatus) String() string {
+	if hs == statusOk {
+		return "ok"
+	}
+
+	return "failure"
+}
+
 // HandlerSelector selects a perfect file handler for dfs server.
 type HandlerSelector struct {
 	segments       []*metadata.Segment
 	handlers       map[string]fileop.DFSFileHandler
 	degradeHandler fileop.DFSFileHandler
-	status         map[fileop.DFSFileHandler]handlerStatus
+	status         map[string]handlerStatus
 
 	rwLock sync.RWMutex
 }
@@ -32,11 +55,6 @@ func (hs *HandlerSelector) updateHandler(shard *metadata.Shard) {
 	var handler fileop.DFSFileHandler
 	var err error
 
-	status := statusOk
-	defer func() {
-		hs.status[handler] = status
-	}()
-
 	if len(shard.VolHost) != 0 && len(shard.VolName) != 0 { // GlusterFS
 		handler, err = fileop.NewGlusterHandler(shard, filepath.Join(*logDir, shard.Name))
 	} else { // GridFS
@@ -44,24 +62,32 @@ func (hs *HandlerSelector) updateHandler(shard *metadata.Shard) {
 	}
 
 	if err != nil {
-		log.Printf("Failed to create handler, shard: %+v, error: %v", shard, err)
-		status = statusFailure
+		log.Printf("Failed to create handler, shard: %v, error: %v", shard, err)
 		return
 	}
 
 	if shard.ShdType == metadata.DegradeServer {
-		hs.degradeHandler = handler
-		log.Printf("Succeeded to create degrade handler, shard: %+v", shard)
+		if hs.degradeHandler != nil {
+			log.Printf("Failed to create degrade server, since we already have one, shard: %v", shard)
+			return
+		}
+
+		hs.degradeHandler = fileop.NewDegradeHandler(handler)
+		hs.updateHandlerStatus(handler, statusOk)
+		log.Printf("Succeeded to create degrade handler, shard: %v", shard)
 		return
 	}
 
-	if h, ok := hs.handlers[shard.Name]; ok {
-		h.Close()
+	if h, ok := hs.handlers[handler.Name()]; ok {
+		if err := h.Close(); err != nil {
+			log.Printf("Failed to close the old handler: %v", h)
+		}
 	}
 
-	hs.handlers[shard.Name] = handler
+	hs.handlers[handler.Name()] = handler
+	hs.updateHandlerStatus(handler, statusOk)
 
-	log.Printf("Succeeded to create handler, shard: %+v", shard)
+	log.Printf("Succeeded to create handler, shard: %v", shard)
 }
 
 // getDfsFileHandler returns perfect file handlers to process file.
@@ -79,7 +105,7 @@ func (hs *HandlerSelector) getDFSFileHandler(domain int64) (*fileop.DFSFileHandl
 
 	h, ok := hs.handlers[seg.NormalServer]
 	if !ok {
-		return nil, nil, fmt.Errorf("no normal site, seg: %+v", seg)
+		return nil, nil, fmt.Errorf("no normal site, seg: %v", seg)
 	}
 
 	m, ok := hs.handlers[seg.MigrateServer]
@@ -96,11 +122,12 @@ func (hs *HandlerSelector) checkOrDegrade(handler *fileop.DFSFileHandler) (*file
 		return nil, fmt.Errorf("Failed to degrade: handler is nil")
 	}
 
-	if status, ok := hs.getStatus(*handler); ok && status == statusOk {
+	if status, ok := hs.getHandlerStatus(*handler); ok && status == statusOk {
 		return handler, nil
 	}
 
-	if status, ok := hs.getStatus(hs.degradeHandler); ok && status == statusOk {
+	if status, ok := hs.getHandlerStatus(hs.degradeHandler); ok && status == statusOk {
+		log.Printf("DEGRADE!!! %v ==> %v", (*handler).Name(), hs.degradeHandler.Name())
 		return &hs.degradeHandler, nil
 	}
 
@@ -140,27 +167,54 @@ func (hs *HandlerSelector) getDFSFileHandlerForRead(domain int64) (*fileop.DFSFi
 	return n, m, nil
 }
 
-func (hs *HandlerSelector) updateStatus(name string, status handlerStatus) {
+func (hs *HandlerSelector) updateHandlerStatus(h fileop.DFSFileHandler, status handlerStatus) {
 	hs.rwLock.Lock()
 	defer hs.rwLock.Unlock()
 
-	if h, ok := hs.handlers[name]; ok {
-		hs.status[h] = status
-	}
+	hs.status[h.Name()] = status
 }
 
-func (hs *HandlerSelector) getStatus(h fileop.DFSFileHandler) (handlerStatus, bool) {
+func (hs *HandlerSelector) getHandlerStatus(h fileop.DFSFileHandler) (handlerStatus, bool) {
 	hs.rwLock.RLock()
 	defer hs.rwLock.RUnlock()
 
-	status, ok := hs.status[h]
+	status, ok := hs.status[h.Name()]
 	return status, ok
+}
+
+// startHealthyCheckRoutine starts a routine for health check.
+func (hs *HandlerSelector) startHealthyCheckRoutine() {
+	// Starts a routine for health check every healthCheckInterval seconds.
+	go func() {
+		ticker := time.NewTicker(time.Duration(*healthCheckInterval) * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				for _, handler := range hs.handlers {
+					// For every handler, starts a routine to check its health.
+					go func(h fileop.DFSFileHandler) {
+						hs.updateHandlerStatus(h, healthCheck(h))
+						log.Printf("status of handler %v is %v", h.Name(), hs.status[h.Name()])
+					}(handler)
+				}
+
+				// starts a routine to check degrade server.
+				go func() {
+					h := hs.degradeHandler
+					hs.updateHandlerStatus(h, healthCheck(h))
+					log.Printf("status of handler %v is %v", h.Name(), hs.status[h.Name()])
+				}()
+			}
+		}
+	}()
 }
 
 func NewHandlerSelector(segments []*metadata.Segment, shards []*metadata.Shard) (*HandlerSelector, error) {
 	selector := new(HandlerSelector)
 	selector.handlers = make(map[string]fileop.DFSFileHandler)
-	selector.status = make(map[fileop.DFSFileHandler]handlerStatus)
+	selector.status = make(map[string]handlerStatus)
 	selector.segments = segments
 
 	for _, shard := range shards {
@@ -168,6 +222,29 @@ func NewHandlerSelector(segments []*metadata.Segment, shards []*metadata.Shard) 
 	}
 
 	return selector, nil
+}
+
+// healthCheck detects a handler for its health.
+// If detection times out, return false.
+func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
+	running := make(chan bool)
+	ticker := time.NewTicker(time.Duration(*healthCheckTimeout) * time.Second)
+	defer func() {
+		ticker.Stop()
+		close(running)
+	}()
+
+	go func() {
+		running <- handler.IsHealthy()
+	}()
+
+	select {
+	case result := <-running:
+		return NewHandlerStatus(result)
+	case <-ticker.C:
+		log.Printf("check handler %v expired", handler.Name())
+		return statusFailure
+	}
 }
 
 // FindPerfectSegment finds a perfect segment for domain.

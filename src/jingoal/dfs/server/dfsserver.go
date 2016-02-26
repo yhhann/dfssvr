@@ -43,7 +43,7 @@ func (s *DFSServer) GetDfsServers(req *discovery.GetDfsServersReq, stream discov
 
 	log.Printf("Client connected successfully, %v", req.GetClient().String())
 
-	ticker := time.NewTicker(time.Duration(1*int64(*heartbeatInterval)) * time.Second)
+	ticker := time.NewTicker(time.Duration(*heartbeatInterval) * time.Second)
 outLoop:
 	for {
 		select {
@@ -327,7 +327,7 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 }
 
 func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
-	log.Printf("start to register self: %s on %s", name, lsnAddr)
+	log.Printf("Start to register self[%s,%s]", name, lsnAddr)
 
 	rAddr, err := s.sanitizeLsnAddr(lsnAddr)
 	if err != nil {
@@ -342,7 +342,7 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 		return err
 	}
 
-	log.Printf("register %s - %s ok", name, rAddr)
+	log.Printf("Succeeded to register self[%s,%s] on %s ok", name, rAddr, transfer.NodeName)
 	return nil
 }
 
@@ -404,7 +404,7 @@ func (s *DFSServer) getIfcAddr() ([]string, error) {
 //  dfsServer, err := NewDFSServer(lsnAddr, "mySite", "shard",
 //         "mongodb://192.168.1.15:27017", "192.168.1.16:2181", 3)
 func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAddr string, timeout int) (*DFSServer, error) {
-	log.Printf("start dfs server on %v\n", lsnAddr.String())
+	log.Printf("Try to start DFS server %v on %v\n", name, lsnAddr.String())
 
 	r := discovery.NewZKDfsServerRegister(zkAddr, time.Duration(timeout)*time.Millisecond)
 	server := DFSServer{
@@ -422,7 +422,7 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	segments := server.mOp.FindAllSegmentsOrderByDomain()
 	log.Println("Succeeded to fill segments.")
 	for _, seg := range segments {
-		log.Printf("segment: [%+v]", *seg)
+		log.Printf("segment: [Domain:%d, ns:%s, ms:%s]", seg.Domain, seg.NormalServer, seg.MigrateServer)
 	}
 
 	// Initialize storage servers
@@ -434,7 +434,11 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	if err := server.registerSelf(lsnAddr.String(), name); err != nil {
 		return nil, err
 	}
-	log.Printf("Succeeded to register self[%+v], dfs server started.", name)
+
+	// routines for healthy check must be started after server registered.
+	server.selector.startHealthyCheckRoutine()
+
+	log.Printf("Succeeded to start DFS server %v.", name)
 
 	return &server, nil
 }

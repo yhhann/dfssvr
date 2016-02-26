@@ -3,10 +3,35 @@ package fileop
 import (
 	"log"
 	"testing"
+	"time"
+
+	"gopkg.in/mgo.v2"
 
 	"jingoal/dfs/metadata"
 	"jingoal/dfs/transfer"
 )
+
+func TestServerStatus(t *testing.T) {
+	session, err := metadata.OpenMongoSession("mongodb://192.168.55.193:27017/")
+	if err != nil {
+		t.Errorf("Open mongo session error: %v", err)
+	}
+
+	defer session.Close()
+
+	log.Printf("waiting for shutdown server!")
+	time.Sleep(10 * time.Second) // try to shutdown the mongodb server.
+	log.Printf("wait over!")
+
+	if !Ok(session) {
+		t.Error("status is not ok")
+	}
+}
+
+func Ok(session *mgo.Session) bool {
+	err := session.Run("serverStatus", nil)
+	return err == nil
+}
 
 func TestGridFs(t *testing.T) {
 	shard := &metadata.Shard{
@@ -52,13 +77,17 @@ func TestGridFs(t *testing.T) {
 	}
 
 	fid := f.Id()
+	fids, ok := fid.(string)
+	if !ok {
+		t.Errorf("fid created is not string, %T", fid)
+	}
 
 	if err := file.Close(); err != nil {
 		t.Errorf("Close write file error %v\n", err)
 	}
 
 	// Open file
-	nf, err := handler.Open(fid, 2)
+	nf, err := handler.Open(fids, 2)
 	if err != nil {
 		t.Errorf("Open file error %v\n", err)
 	}
@@ -77,7 +106,7 @@ func TestGridFs(t *testing.T) {
 		t.Errorf("Close read file error %v\n", err)
 	}
 
-	if err := handler.Remove(fid, 2); err != nil {
+	if err := handler.Remove(fids, 2); err != nil {
 		t.Errorf("Remove file error %v\n", err)
 	}
 }

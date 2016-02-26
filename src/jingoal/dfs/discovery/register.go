@@ -3,11 +3,13 @@ package discovery
 import (
 	"encoding/json"
 	"log"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"jingoal/dfs/notice"
+	"jingoal/dfs/transfer"
 )
 
 const (
@@ -56,7 +58,8 @@ func (r *ZKDfsServerRegister) Register(s *DfsServer) error {
 	}
 
 	// Register server
-	_, data, errors := r.notice.Register(dfsPath, serverData, true /*startCheckRoutine*/)
+	nodeName, data, errors := r.notice.Register(dfsPath, serverData, true /*startCheckRoutine*/)
+	transfer.NodeName = filepath.Base(nodeName)
 
 	go func() {
 		for {

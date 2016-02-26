@@ -5,7 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
+	"log"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/kshlm/gogfapi/gfapi"
 	"gopkg.in/mgo.v2"
@@ -161,6 +164,37 @@ func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
 		mode:    FileModeRead,
 		handler: h,
 	}, nil
+}
+
+// HandlerType returns type of the handler.
+func (h *GlusterHandler) HandlerType() HandlerType {
+	return GlusterType
+}
+
+// IsHealthy checks whether shard is ok.
+func (h *GlusterHandler) IsHealthy() bool {
+	if err := h.session.Run("serverStatus", nil); err != nil {
+		return false
+	}
+
+	magicDirPath := filepath.Join(h.VolBase, "magic", transfer.NodeName)
+	if err := h.Volume.MkdirAll(magicDirPath, 0755); err != nil {
+		log.Printf("IsHealthy error: %v", err)
+		return false
+	}
+
+	fn := strconv.Itoa(int(time.Now().Unix()))
+	magicFilePath := filepath.Join(magicDirPath, fn)
+	if _, err := h.Volume.Create(magicFilePath); err != nil {
+		log.Printf("IsHealthy error: %v", err)
+		return false
+	}
+	if err := h.Volume.Unlink(magicFilePath); err != nil {
+		log.Printf("IsHealthy error: %v", err)
+		return false
+	}
+
+	return true
 }
 
 // NewGlusterHandler creates a GlusterHandler.
