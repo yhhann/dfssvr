@@ -1,10 +1,16 @@
 package fileop
 
-import "jingoal/dfs/transfer"
+import (
+	"log"
+	"time"
+
+	"jingoal/dfs/recovery"
+	"jingoal/dfs/transfer"
+)
 
 type DegradeHandler struct {
-	//fh *GridFsHandler
-	fh DFSFileHandler
+	fh   DFSFileHandler
+	reOp *recovery.RecoveryEventOp
 }
 
 // Name returns handler's name.
@@ -14,7 +20,23 @@ func (h *DegradeHandler) Name() string {
 
 // Create creates a DFSFile for write
 func (h *DegradeHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
-	return h.fh.Create(info)
+	f, err := h.fh.Create(info)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save the degradation event for recovery.
+	re := recovery.RecoveryEvent{
+		Domain:    info.Domain,
+		Fid:       info.Id,
+		Timestamp: time.Now().Unix(),
+	}
+
+	err = h.reOp.SaveEvent(&re)
+	if err != nil { // Log and ignore the event saving error.
+		log.Printf("DEGRADE log error, log[%s], error[%v]", re.String(), err)
+	}
+	return f, nil
 }
 
 // Open opens a DFSFile for read
@@ -43,8 +65,9 @@ func (h *DegradeHandler) IsHealthy() bool {
 }
 
 // NewDegradeHandler returns a handler for processing Degraded files.
-func NewDegradeHandler(handler DFSFileHandler) *DegradeHandler {
+func NewDegradeHandler(handler DFSFileHandler, reop *recovery.RecoveryEventOp) *DegradeHandler {
 	return &DegradeHandler{
-		fh: handler,
+		fh:   handler,
+		reOp: reop,
 	}
 }

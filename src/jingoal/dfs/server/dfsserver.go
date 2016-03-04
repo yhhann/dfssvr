@@ -16,6 +16,7 @@ import (
 	"jingoal/dfs/discovery"
 	"jingoal/dfs/fileop"
 	"jingoal/dfs/metadata"
+	"jingoal/dfs/recovery"
 	"jingoal/dfs/transfer"
 )
 
@@ -32,6 +33,7 @@ const (
 // DFSServer implements DiscoveryServiceServer and FileTransferServer.
 type DFSServer struct {
 	mOp      metadata.MetaOp
+	reOp     *recovery.RecoveryEventOp
 	register discovery.Register
 	selector *HandlerSelector
 }
@@ -418,6 +420,12 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	}
 	server.mOp = mop
 
+	reop, err := recovery.NewRecoveryEventOp(dbName, uri)
+	if err != nil {
+		return nil, err
+	}
+	server.reOp = reop
+
 	// Fill segment data.
 	segments := server.mOp.FindAllSegmentsOrderByDomain()
 	log.Println("Succeeded to fill segments.")
@@ -427,7 +435,7 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 
 	// Initialize storage servers
 	shards := server.mOp.FindAllShards()
-	server.selector, err = NewHandlerSelector(segments, shards)
+	server.selector, err = NewHandlerSelector(segments, shards, server.reOp)
 	log.Printf("Succeeded to initialize storage servers.")
 
 	// Register self.

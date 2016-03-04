@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	mongoTimeout = flag.Int("mongo-timeout", 10, "mongdb connecte timeout")
+	MongoTimeout = flag.Int("mongo-timeout", 10, "mongdb connecte timeout")
 
 	ObjectIdInvalidError = errors.New("ObjectId invalid")
 )
@@ -201,7 +201,11 @@ func NewMongoMetaOp(dbName string, uri string) (*MongoMetaOp, error) {
 		return nil, err
 	}
 
-	return &MongoMetaOp{uri: uri, dbName: dbName, session: session}, nil
+	return &MongoMetaOp{
+		uri:     uri,
+		dbName:  dbName,
+		session: session,
+	}, nil
 }
 
 // OpenMongoSession returns a session by given mongodb uri.
@@ -211,7 +215,7 @@ func OpenMongoSession(uri string) (*mgo.Session, error) {
 		return nil, err
 	}
 
-	info.Timeout = time.Duration(*mongoTimeout) * time.Second
+	info.Timeout = time.Duration(*MongoTimeout) * time.Second
 	session, err := mgo.DialWithInfo(info)
 	if err != nil {
 		return nil, err

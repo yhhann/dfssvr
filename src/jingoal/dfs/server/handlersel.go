@@ -3,13 +3,17 @@ package server
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"gopkg.in/mgo.v2/bson"
+
 	"jingoal/dfs/fileop"
 	"jingoal/dfs/metadata"
+	"jingoal/dfs/recovery"
 )
 
 const (
@@ -20,6 +24,10 @@ const (
 var (
 	healthCheckInterval = flag.Int("health-check-interval", 30, "health check interval in seconds")
 	healthCheckTimeout  = flag.Int("health-check-timeout", 5, "health check timeout in seconds")
+
+	recoveryBufferSize = flag.Int("recovery-buffer-size", 100000, "size of channel for each DFSFileHandler")
+	recoveryInterval   = flag.Int("recovery-interval", 60, "interval in seconds for recovery event inspection")
+	recoveryBatchSize  = flag.Int("recovery-batch-size", 100000, "batch size for recovery event inspection")
 )
 
 type handlerStatus uint
@@ -40,18 +48,54 @@ func (hs handlerStatus) String() string {
 	return "failure"
 }
 
+// FileRecoveryInfo represents the information for file recovery.
+type FileRecoveryInfo struct {
+	Id     bson.ObjectId
+	Fid    string
+	Domain int64
+}
+
+func (rInfo *FileRecoveryInfo) String() string {
+	return fmt.Sprintf("fid: %s, domain: %d, id: %s",
+		rInfo.Fid, rInfo.Domain, rInfo.Id.String())
+}
+
 // HandlerSelector selects a perfect file handler for dfs server.
 type HandlerSelector struct {
 	segments       []*metadata.Segment
 	handlers       map[string]fileop.DFSFileHandler
 	degradeHandler fileop.DFSFileHandler
 	status         map[string]handlerStatus
+	reOp           *recovery.RecoveryEventOp
+
+	// For recovery
+	recoveries map[string]chan *FileRecoveryInfo
 
 	rwLock sync.RWMutex
 }
 
 // updateHandler creates or updates a handler for given shard.
-func (hs *HandlerSelector) updateHandler(shard *metadata.Shard) {
+// op 1 for add a handler, 2 for delete a handler.
+func (hs *HandlerSelector) updateHandler(shard *metadata.Shard, op int) {
+	switch op {
+	case 1:
+		hs.addHandler(shard)
+	case 2:
+		hs.deleteHandler(shard.Name)
+	}
+}
+
+func (hs *HandlerSelector) deleteHandler(handlerName string) {
+	if h, ok := hs.handlers[handlerName]; ok {
+		if err := h.Close(); err != nil {
+			log.Printf("Failed to close the old handler: %v", h)
+		}
+
+		hs.handlers[handlerName] = nil
+	}
+}
+
+func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 	var handler fileop.DFSFileHandler
 	var err error
 
@@ -72,7 +116,7 @@ func (hs *HandlerSelector) updateHandler(shard *metadata.Shard) {
 			return
 		}
 
-		hs.degradeHandler = fileop.NewDegradeHandler(handler)
+		hs.degradeHandler = fileop.NewDegradeHandler(handler, hs.reOp)
 		hs.updateHandlerStatus(handler, statusOk)
 		log.Printf("Succeeded to create degrade handler, shard: %v", shard)
 		return
@@ -86,6 +130,8 @@ func (hs *HandlerSelector) updateHandler(shard *metadata.Shard) {
 
 	hs.handlers[handler.Name()] = handler
 	hs.updateHandlerStatus(handler, statusOk)
+
+	hs.recoveries[handler.Name()] = make(chan *FileRecoveryInfo, *recoveryBufferSize)
 
 	log.Printf("Succeeded to create handler, shard: %v", shard)
 }
@@ -211,14 +257,79 @@ func (hs *HandlerSelector) startHealthyCheckRoutine() {
 	}()
 }
 
-func NewHandlerSelector(segments []*metadata.Segment, shards []*metadata.Shard) (*HandlerSelector, error) {
+// startRecoveryRoutine starts a recovery routine for every handler.
+func (hs *HandlerSelector) startRevoveryRoutine() {
+	for handlerName, c := range hs.recoveries {
+		h := hs.handlers[handlerName]
+		go func(handler fileop.DFSFileHandler, ch chan *FileRecoveryInfo) {
+			for {
+				select {
+				case recoveryInfo := <-ch:
+					if err := copyFile(handler, hs.degradeHandler, recoveryInfo); err != nil {
+						log.Printf("Failed to recovery file %s, error: %v", recoveryInfo.Fid, err)
+						break
+					}
+
+					if err := hs.reOp.RemoveEvent(recoveryInfo.Id); err != nil {
+						log.Printf("Failed to remove recovery event %s", recoveryInfo.String())
+					}
+				}
+			}
+		}(h, c)
+	}
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(*recoveryInterval) * time.Second)
+		defer func() {
+			ticker.Stop()
+		}()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := hs.dispatchRecoveryEvent(*recoveryBatchSize, int64(*recoveryInterval)); err != nil {
+					log.Printf("Recovery dispatch error, %v", err)
+				}
+			}
+		}
+
+	}()
+
+}
+
+// dispachRecoveryEvent dispatches recovery events.
+func (hs *HandlerSelector) dispatchRecoveryEvent(batchSize int, timeout int64) error {
+	events, err := hs.reOp.GetEventsInBatch(batchSize, timeout)
+	if err != nil {
+		return err
+	}
+
+	for _, e := range events {
+		h, err := hs.getDFSFileHandlerForWrite(e.Domain)
+		if err != nil {
+			log.Printf("Failed to get file handler for %d", e.Domain)
+			continue
+		}
+
+		hs.recoveries[(*h).Name()] <- &FileRecoveryInfo{
+			Id:     e.Id,
+			Fid:    e.Fid,
+			Domain: e.Domain,
+		}
+	}
+
+	return nil
+}
+
+func NewHandlerSelector(segments []*metadata.Segment, shards []*metadata.Shard, reop *recovery.RecoveryEventOp) (*HandlerSelector, error) {
 	selector := new(HandlerSelector)
 	selector.handlers = make(map[string]fileop.DFSFileHandler)
 	selector.status = make(map[string]handlerStatus)
 	selector.segments = segments
+	selector.reOp = reop
 
 	for _, shard := range shards {
-		selector.updateHandler(shard)
+		selector.updateHandler(shard, 1 /* add */)
 	}
 
 	return selector, nil
@@ -245,6 +356,33 @@ func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
 		log.Printf("check handler %v expired", handler.Name())
 		return statusFailure
 	}
+}
+
+// copyFile copies a file from src to dst.
+func copyFile(dst, src fileop.DFSFileHandler, info *FileRecoveryInfo) error {
+	rf, err := src.Open(info.Fid, info.Domain)
+	if err != nil {
+		return err
+	}
+	defer rf.Close()
+
+	wf, err := dst.Create(rf.GetFileInfo())
+	if err != nil {
+		return err
+	}
+	defer wf.Close()
+
+	size, err := io.Copy(wf, rf)
+	if err != nil {
+		return err
+	}
+
+	if size != rf.GetFileInfo().Size {
+		return fmt.Errorf("Copy file %s, size error: expected %d, actual %d",
+			info.String(), rf.GetFileInfo().Size, size)
+	}
+
+	return nil
 }
 
 // FindPerfectSegment finds a perfect segment for domain.
