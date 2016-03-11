@@ -49,6 +49,10 @@ func checkFlags() {
 }
 
 func setupLog() {
+	if *logDir == "" {
+		return
+	}
+
 	if _, err := os.Stat(*logDir); os.IsNotExist(err) {
 		if err = os.MkdirAll(*logDir, 0700); err != nil {
 			log.Fatalf("Failed to create log directory: %v", err)

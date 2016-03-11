@@ -16,6 +16,7 @@ import (
 	"jingoal/dfs/discovery"
 	"jingoal/dfs/fileop"
 	"jingoal/dfs/metadata"
+	"jingoal/dfs/notice"
 	"jingoal/dfs/recovery"
 	"jingoal/dfs/transfer"
 )
@@ -35,6 +36,7 @@ type DFSServer struct {
 	mOp      metadata.MetaOp
 	reOp     *recovery.RecoveryEventOp
 	register discovery.Register
+	notice   notice.Notice
 	selector *HandlerSelector
 }
 
@@ -405,12 +407,14 @@ func (s *DFSServer) getIfcAddr() ([]string, error) {
 //  lsnAddr, _ := ResolveTCPAddr("tcp", ":10000")
 //  dfsServer, err := NewDFSServer(lsnAddr, "mySite", "shard",
 //         "mongodb://192.168.1.15:27017", "192.168.1.16:2181", 3)
-func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAddr string, timeout int) (*DFSServer, error) {
+func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAddrs string, zkTimeout int) (*DFSServer, error) {
 	log.Printf("Try to start DFS server %v on %v\n", name, lsnAddr.String())
 
-	r := discovery.NewZKDfsServerRegister(zkAddr, time.Duration(timeout)*time.Millisecond)
+	zk := notice.NewDfsZK(strings.Split(zkAddrs, ","), time.Duration(zkTimeout)*time.Millisecond)
+	r := discovery.NewZKDfsServerRegister(zk)
 	server := DFSServer{
 		register: r,
+		notice:   zk,
 	}
 
 	// Create NewMongoMetaOp
@@ -426,16 +430,7 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	}
 	server.reOp = reop
 
-	// Fill segment data.
-	segments := server.mOp.FindAllSegmentsOrderByDomain()
-	log.Println("Succeeded to fill segments.")
-	for _, seg := range segments {
-		log.Printf("segment: [Domain:%d, ns:%s, ms:%s]", seg.Domain, seg.NormalServer, seg.MigrateServer)
-	}
-
-	// Initialize storage servers
-	shards := server.mOp.FindAllShards()
-	server.selector, err = NewHandlerSelector(segments, shards, server.reOp)
+	server.selector, err = NewHandlerSelector(&server)
 	log.Printf("Succeeded to initialize storage servers.")
 
 	// Register self.
@@ -443,8 +438,9 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 		return nil, err
 	}
 
-	// routines for healthy check must be started after server registered.
-	server.selector.startHealthyCheckRoutine()
+	server.selector.startRevoveryDispatchRoutine()
+
+	server.selector.startShardNoticeRoutine()
 
 	log.Printf("Succeeded to start DFS server %v.", name)
 

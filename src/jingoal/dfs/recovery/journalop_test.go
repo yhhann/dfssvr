@@ -36,7 +36,7 @@ func TestNormal(t *testing.T) {
 	}
 
 	createEvents(dop, cnt, "first")
-	events, err := dop.GetBatchEvents(cnt, 3000)
+	events, err := dop.GetEventsInBatch(cnt, 3000)
 	if err != nil {
 		t.Errorf("GetEvents error %v", err)
 	}
@@ -57,7 +57,7 @@ func TestTimeout1(t *testing.T) {
 	}
 
 	createEvents(dop, cnt, "first")
-	events, err := dop.GetBatchEvents(cnt*10, 1)
+	events, err := dop.GetEventsInBatch(cnt*10, 1)
 	if err != nil {
 		t.Errorf("GetEvents error %v", err)
 	}
@@ -78,7 +78,7 @@ func TestTimeout2(t *testing.T) {
 	}
 
 	createEvents(dop, cnt, "first")
-	events, err := dop.GetBatchEvents(cnt*10, cnt*15)
+	events, err := dop.GetEventsInBatch(cnt*10, cnt*15)
 	if err != nil {
 		t.Errorf("GetEvents error %v", err)
 	}

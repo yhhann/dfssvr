@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"path/filepath"
-	"strings"
 	"sync"
-	"time"
 
 	"jingoal/dfs/notice"
 	"jingoal/dfs/transfer"
@@ -14,7 +12,7 @@ import (
 
 const (
 	// dfsPath is the path for dfs server to register.
-	dfsPath = "/shard/dfs/dfs_"
+	dfsPath = notice.ShardDfsPath + "/dfs_"
 )
 
 // Register defines an action of underlying service register.
@@ -35,8 +33,6 @@ type Register interface {
 
 // ZKDfsServerRegister implements the Register interface
 type ZKDfsServerRegister struct {
-	zkAddrs    []string
-	zkTimeout  time.Duration
 	serverMap  map[string]*DfsServer
 	observers  map[chan<- struct{}]string
 	notice     notice.Notice
@@ -125,11 +121,9 @@ func (r *ZKDfsServerRegister) RemoveObserver(observer chan<- struct{}) {
 	close(observer)
 }
 
-func NewZKDfsServerRegister(addrs string, timeout time.Duration) *ZKDfsServerRegister {
+func NewZKDfsServerRegister(notice notice.Notice) *ZKDfsServerRegister {
 	r := new(ZKDfsServerRegister)
-	r.zkAddrs = strings.Split(addrs, ",")
-	r.zkTimeout = timeout
-	r.notice = notice.NewDfsZK(r.zkAddrs, r.zkTimeout)
+	r.notice = notice
 	r.serverMap = make(map[string]*DfsServer)
 	r.observers = make(map[chan<- struct{}]string)
 

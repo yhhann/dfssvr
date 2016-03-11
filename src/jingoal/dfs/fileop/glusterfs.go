@@ -38,7 +38,7 @@ func (h *GlusterHandler) initVolume() error {
 	h.Volume = new(gfapi.Volume)
 
 	if ret := h.Init(h.VolHost, h.VolName); ret != 0 {
-		return fmt.Errorf("init Volume %s on %s error: %d\n", h.VolName, h.VolHost, ret)
+		return fmt.Errorf("init volume %s on %s error: %d\n", h.VolName, h.VolHost, ret)
 	}
 
 	if ret, _ := h.SetLogging(h.VolLog, gfapi.LogInfo); ret != 0 {

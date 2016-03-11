@@ -3,9 +3,9 @@ package server
 import (
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,12 +13,7 @@ import (
 
 	"jingoal/dfs/fileop"
 	"jingoal/dfs/metadata"
-	"jingoal/dfs/recovery"
-)
-
-const (
-	statusOk      handlerStatus = iota // handler for shard is ok.
-	statusFailure                      // handler for shard is failure.
+	"jingoal/dfs/notice"
 )
 
 var (
@@ -29,24 +24,6 @@ var (
 	recoveryInterval   = flag.Int("recovery-interval", 60, "interval in seconds for recovery event inspection")
 	recoveryBatchSize  = flag.Int("recovery-batch-size", 100000, "batch size for recovery event inspection")
 )
-
-type handlerStatus uint
-
-func NewHandlerStatus(v bool) handlerStatus {
-	if v {
-		return statusOk
-	}
-
-	return statusFailure
-}
-
-func (hs handlerStatus) String() string {
-	if hs == statusOk {
-		return "ok"
-	}
-
-	return "failure"
-}
 
 // FileRecoveryInfo represents the information for file recovery.
 type FileRecoveryInfo struct {
@@ -62,16 +39,63 @@ func (rInfo *FileRecoveryInfo) String() string {
 
 // HandlerSelector selects a perfect file handler for dfs server.
 type HandlerSelector struct {
-	segments       []*metadata.Segment
-	handlers       map[string]fileop.DFSFileHandler
-	degradeHandler fileop.DFSFileHandler
-	status         map[string]handlerStatus
-	reOp           *recovery.RecoveryEventOp
+	segments    []*metadata.Segment
+	segmentLock sync.RWMutex
 
-	// For recovery
-	recoveries map[string]chan *FileRecoveryInfo
+	recoveries   map[string]chan *FileRecoveryInfo
+	recoveryLock sync.RWMutex
 
-	rwLock sync.RWMutex
+	shardHandlers map[string]*ShardHandler
+	handlerLock   sync.RWMutex
+
+	degradeShardHandler *ShardHandler
+
+	dfsServer *DFSServer
+}
+
+func (hs *HandlerSelector) addRecovery(name string, rInfo chan *FileRecoveryInfo) {
+	hs.recoveryLock.Lock()
+	defer hs.recoveryLock.Unlock()
+
+	hs.recoveries[name] = rInfo
+}
+
+func (hs *HandlerSelector) delRecovery(name string) {
+	hs.recoveryLock.Lock()
+	defer hs.recoveryLock.Unlock()
+
+	delete(hs.recoveries, name)
+}
+
+func (hs *HandlerSelector) getRecovery(name string) (chan *FileRecoveryInfo, bool) {
+	hs.recoveryLock.RLock()
+	defer hs.recoveryLock.RUnlock()
+
+	rInfo, ok := hs.recoveries[name]
+
+	return rInfo, ok
+}
+
+func (hs *HandlerSelector) setShardHandler(handlerName string, handler *ShardHandler) {
+	hs.handlerLock.Lock()
+	defer hs.handlerLock.Unlock()
+
+	hs.shardHandlers[handlerName] = handler
+}
+
+func (hs *HandlerSelector) delShardHandler(handlerName string) {
+	hs.handlerLock.Lock()
+	defer hs.handlerLock.Unlock()
+
+	delete(hs.shardHandlers, handlerName)
+}
+
+func (hs *HandlerSelector) getShardHandler(handlerName string) (*ShardHandler, bool) {
+	hs.handlerLock.RLock()
+	defer hs.handlerLock.RUnlock()
+
+	h, ok := hs.shardHandlers[handlerName]
+	return h, ok
 }
 
 // updateHandler creates or updates a handler for given shard.
@@ -86,12 +110,13 @@ func (hs *HandlerSelector) updateHandler(shard *metadata.Shard, op int) {
 }
 
 func (hs *HandlerSelector) deleteHandler(handlerName string) {
-	if h, ok := hs.handlers[handlerName]; ok {
-		if err := h.Close(); err != nil {
-			log.Printf("Failed to close the old handler: %v", h)
+	if sh, ok := hs.getShardHandler(handlerName); ok {
+		if err := sh.handler.Close(); err != nil {
+			log.Printf("Failed to close the old handler: %v", sh.handler.Name())
 		}
 
-		hs.handlers[handlerName] = nil
+		sh.Shutdown()
+		hs.delShardHandler(handlerName)
 	}
 }
 
@@ -111,27 +136,27 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 	}
 
 	if shard.ShdType == metadata.DegradeServer {
-		if hs.degradeHandler != nil {
+		if hs.degradeShardHandler != nil {
 			log.Printf("Failed to create degrade server, since we already have one, shard: %v", shard)
 			return
 		}
 
-		hs.degradeHandler = fileop.NewDegradeHandler(handler, hs.reOp)
-		hs.updateHandlerStatus(handler, statusOk)
+		dh := fileop.NewDegradeHandler(handler, hs.dfsServer.reOp)
+		hs.degradeShardHandler = NewShardHandler(dh, statusOk, hs)
 		log.Printf("Succeeded to create degrade handler, shard: %v", shard)
 		return
 	}
 
-	if h, ok := hs.handlers[handler.Name()]; ok {
-		if err := h.Close(); err != nil {
-			log.Printf("Failed to close the old handler: %v", h)
+	if sh, ok := hs.getShardHandler(handler.Name()); ok {
+		if err := sh.Shutdown(); err != nil {
+			log.Printf("Failed to shutdown old handler: %v", sh.handler.Name())
 		}
 	}
 
-	hs.handlers[handler.Name()] = handler
-	hs.updateHandlerStatus(handler, statusOk)
+	sh := NewShardHandler(handler, statusOk, hs)
 
-	hs.recoveries[handler.Name()] = make(chan *FileRecoveryInfo, *recoveryBufferSize)
+	hs.setShardHandler(handler.Name(), sh)
+	hs.addRecovery(handler.Name(), sh.recoveryChan)
 
 	log.Printf("Succeeded to create handler, shard: %v", shard)
 }
@@ -140,44 +165,46 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 // The first returned handler is for normal handler,
 // and the second one is for file migrating.
 func (hs *HandlerSelector) getDFSFileHandler(domain int64) (*fileop.DFSFileHandler, *fileop.DFSFileHandler, error) {
-	if len(hs.handlers) == 0 {
+	if len(hs.shardHandlers) == 0 {
 		return nil, nil, fmt.Errorf("no handler")
 	}
 
-	seg := FindPerfectSegment(hs.segments, domain)
+	seg := hs.FindPerfectSegment(domain)
 	if seg == nil {
-		return nil, nil, fmt.Errorf("Failed to find perfect server, domain %d", domain)
+		return nil, nil, fmt.Errorf("can not find perfect server, domain %d", domain)
 	}
 
-	h, ok := hs.handlers[seg.NormalServer]
+	n, ok := hs.getShardHandler(seg.NormalServer)
 	if !ok {
 		return nil, nil, fmt.Errorf("no normal site, seg: %v", seg)
 	}
 
-	m, ok := hs.handlers[seg.MigrateServer]
+	m, ok := hs.getShardHandler(seg.MigrateServer)
 	if ok {
-		return &h, &m, nil
+		return &(n.handler), &(m.handler), nil
 	}
-	return &h, nil, nil
+
+	return &(n.handler), nil, nil
 }
 
 // checkOrDegrade checks status of given handler,
 // if status is offline, degrade.
 func (hs *HandlerSelector) checkOrDegrade(handler *fileop.DFSFileHandler) (*fileop.DFSFileHandler, error) {
 	if handler == nil { // Check for nil.
-		return nil, fmt.Errorf("Failed to degrade: handler is nil")
+		return nil, fmt.Errorf("failed to degrade: handler is nil")
 	}
 
 	if status, ok := hs.getHandlerStatus(*handler); ok && status == statusOk {
 		return handler, nil
 	}
 
-	if status, ok := hs.getHandlerStatus(hs.degradeHandler); ok && status == statusOk {
-		log.Printf("DEGRADE!!! %v ==> %v", (*handler).Name(), hs.degradeHandler.Name())
-		return &hs.degradeHandler, nil
+	dh := hs.degradeShardHandler.handler
+	if hs.degradeShardHandler.status == statusOk {
+		log.Printf("DEGRADE!!! %v ==> %v", (*handler).Name(), dh.Name())
+		return &dh, nil
 	}
 
-	return nil, fmt.Errorf("Failed to degrade: %v", (*handler).Name())
+	return nil, fmt.Errorf("failed to degrade: %v", (*handler).Name())
 }
 
 // getDfsFileHandlerForWrite returns perfect file handlers to write file.
@@ -204,7 +231,7 @@ func (hs *HandlerSelector) getDFSFileHandlerForRead(domain int64) (*fileop.DFSFi
 
 	m, _ = hs.checkOrDegrade(m) // Need not check this error.
 	n, err = hs.checkOrDegrade(n)
-	// Need not return err, for we will verify the pair of n and m
+	// Need not return err, since we will verify the pair of n and m
 	// outside this function.
 	if err != nil {
 		log.Printf("%v", err)
@@ -214,75 +241,81 @@ func (hs *HandlerSelector) getDFSFileHandlerForRead(domain int64) (*fileop.DFSFi
 }
 
 func (hs *HandlerSelector) updateHandlerStatus(h fileop.DFSFileHandler, status handlerStatus) {
-	hs.rwLock.Lock()
-	defer hs.rwLock.Unlock()
+	hs.handlerLock.Lock()
+	defer hs.handlerLock.Unlock()
 
-	hs.status[h.Name()] = status
+	hs.shardHandlers[h.Name()].updateStatus(status)
 }
 
 func (hs *HandlerSelector) getHandlerStatus(h fileop.DFSFileHandler) (handlerStatus, bool) {
-	hs.rwLock.RLock()
-	defer hs.rwLock.RUnlock()
+	hs.handlerLock.RLock()
+	defer hs.handlerLock.RUnlock()
 
-	status, ok := hs.status[h.Name()]
-	return status, ok
+	sh, ok := hs.shardHandlers[h.Name()]
+	return sh.status, ok
 }
 
-// startHealthyCheckRoutine starts a routine for health check.
-func (hs *HandlerSelector) startHealthyCheckRoutine() {
-	// Starts a routine for health check every healthCheckInterval seconds.
+// startShardNoticeRoutine starts a routine to receive and process notice
+// from shard server and segment change.
+func (hs *HandlerSelector) startShardNoticeRoutine() {
+	s := hs.dfsServer
 	go func() {
-		ticker := time.NewTicker(time.Duration(*healthCheckInterval) * time.Second)
-		defer ticker.Stop()
+		data, errs := s.notice.CheckDataChange(notice.ShardServerPath)
+		log.Printf("Succeeded to start routine for checking shard servers.")
 
 		for {
 			select {
-			case <-ticker.C:
-				for _, handler := range hs.handlers {
-					// For every handler, starts a routine to check its health.
-					go func(h fileop.DFSFileHandler) {
-						hs.updateHandlerStatus(h, healthCheck(h))
-						log.Printf("status of handler %v is %v", h.Name(), hs.status[h.Name()])
-					}(handler)
+			case v := <-data:
+				serverName := string(v)
+				shard, err := s.mOp.LookupShardByName(serverName)
+				if err != nil {
+					log.Printf("Failed to lookup shard by name %s", serverName)
+					break
 				}
 
-				// starts a routine to check degrade server.
-				go func() {
-					h := hs.degradeHandler
-					hs.updateHandlerStatus(h, healthCheck(h))
-					log.Printf("status of handler %v is %v", h.Name(), hs.status[h.Name()])
-				}()
+				// TODO(hanyh): refine it.
+				hs.updateHandler(shard, 1)
+			case err := <-errs:
+				log.Printf("Failed to process shard notice, error: %v", err)
+			}
+		}
+	}()
+
+	go func() {
+		data, errs := s.notice.CheckDataChange(notice.ShardChunkPath)
+		log.Printf("Succeeded to start routine for checking segment.")
+
+		for {
+			select {
+			case v := <-data:
+				segmentName := string(v)
+				domain, err := strconv.Atoi(segmentName)
+				if err != nil {
+					log.Printf("Failed to get changed segment number, error %v", err)
+					break
+				}
+
+				seg, err := s.mOp.LookupSegmentByDomain(int64(domain))
+				if err != nil {
+					log.Printf("Failed to get changed segment, error %v", err)
+					break
+				}
+
+				// Update segment in selector.
+				hs.updateSegment(seg)
+			case err := <-errs:
+				log.Printf("Failed to process segment notice, error: %v", err)
 			}
 		}
 	}()
 }
 
 // startRecoveryRoutine starts a recovery routine for every handler.
-func (hs *HandlerSelector) startRevoveryRoutine() {
-	for handlerName, c := range hs.recoveries {
-		h := hs.handlers[handlerName]
-		go func(handler fileop.DFSFileHandler, ch chan *FileRecoveryInfo) {
-			for {
-				select {
-				case recoveryInfo := <-ch:
-					if err := copyFile(handler, hs.degradeHandler, recoveryInfo); err != nil {
-						log.Printf("Failed to recovery file %s, error: %v", recoveryInfo.Fid, err)
-						break
-					}
-
-					if err := hs.reOp.RemoveEvent(recoveryInfo.Id); err != nil {
-						log.Printf("Failed to remove recovery event %s", recoveryInfo.String())
-					}
-				}
-			}
-		}(h, c)
-	}
-
+func (hs *HandlerSelector) startRevoveryDispatchRoutine() {
 	go func() {
 		ticker := time.NewTicker(time.Duration(*recoveryInterval) * time.Second)
-		defer func() {
-			ticker.Stop()
-		}()
+		defer ticker.Stop()
+		log.Printf("Succeeded to start routine for recovery dispatch.")
 
 		for {
 			select {
@@ -292,14 +325,12 @@ func (hs *HandlerSelector) startRevoveryRoutine() {
 				}
 			}
 		}
-
 	}()
-
 }
 
 // dispachRecoveryEvent dispatches recovery events.
 func (hs *HandlerSelector) dispatchRecoveryEvent(batchSize int, timeout int64) error {
-	events, err := hs.reOp.GetEventsInBatch(batchSize, timeout)
+	events, err := hs.dfsServer.reOp.GetEventsInBatch(batchSize, timeout)
 	if err != nil {
 		return err
 	}
@@ -311,7 +342,12 @@ func (hs *HandlerSelector) dispatchRecoveryEvent(batchSize int, timeout int64) e
 			continue
 		}
 
-		hs.recoveries[(*h).Name()] <- &FileRecoveryInfo{
+		rec, ok := hs.getRecovery((*h).Name())
+		if !ok {
+			continue
+		}
+
+		rec <- &FileRecoveryInfo{
 			Id:     e.Id,
 			Fid:    e.Fid,
 			Domain: e.Domain,
@@ -321,18 +357,101 @@ func (hs *HandlerSelector) dispatchRecoveryEvent(batchSize int, timeout int64) e
 	return nil
 }
 
-func NewHandlerSelector(segments []*metadata.Segment, shards []*metadata.Shard, reop *recovery.RecoveryEventOp) (*HandlerSelector, error) {
-	selector := new(HandlerSelector)
-	selector.handlers = make(map[string]fileop.DFSFileHandler)
-	selector.status = make(map[string]handlerStatus)
-	selector.segments = segments
-	selector.reOp = reop
-
-	for _, shard := range shards {
-		selector.updateHandler(shard, 1 /* add */)
+func (hs *HandlerSelector) searchSegment(segment *metadata.Segment) int {
+	for i, seg := range hs.segments {
+		if seg.Domain == segment.Domain {
+			return i
+		}
 	}
 
-	return selector, nil
+	return -1
+}
+
+// removeSegment removes a segment.
+func (hs *HandlerSelector) removeSegment(segment *metadata.Segment) {
+	pos := hs.searchSegment(segment)
+
+	if pos < 0 { // Not found
+		return
+	}
+
+	hs.segmentLock.Lock()
+	defer hs.segmentLock.Unlock()
+
+	segs := append(hs.segments[:pos], hs.segments[pos+1:]...)
+	hs.segments = segs
+}
+
+// updateSegments updates a segment.
+func (hs *HandlerSelector) updateSegment(segment *metadata.Segment) {
+	pos := hs.searchSegment(segment)
+
+	hs.segmentLock.Lock()
+	defer hs.segmentLock.Unlock()
+
+	if pos >= 0 { // Found
+		foundSeg := hs.segments[pos]
+		if foundSeg.NormalServer == segment.NormalServer &&
+			foundSeg.MigrateServer == segment.MigrateServer {
+			// Equal, remove it.
+			segs := append(hs.segments[:pos], hs.segments[pos+1:]...)
+			hs.segments = segs
+			return
+		}
+		// Not equal, update it.
+		hs.segments[pos] = segment
+		return
+	}
+
+	// Not found, add it.
+	hs.segments = append(hs.segments, segment)
+}
+
+// FindPerfectSegment finds a perfect segment for domain.
+// Segments must be in ascending order.
+func (hs *HandlerSelector) FindPerfectSegment(domain int64) *metadata.Segment {
+	hs.segmentLock.RLock()
+	defer hs.segmentLock.RUnlock()
+
+	var result *metadata.Segment
+
+	for _, seg := range hs.segments {
+		if domain > seg.Domain {
+			result = seg
+			continue
+		} else if domain == seg.Domain {
+			result = seg
+			break
+		} else {
+			break
+		}
+	}
+
+	return result
+}
+
+func NewHandlerSelector(dfsServer *DFSServer) (*HandlerSelector, error) {
+	hs := new(HandlerSelector)
+	hs.dfsServer = dfsServer
+
+	hs.recoveries = make(map[string]chan *FileRecoveryInfo)
+	hs.shardHandlers = make(map[string]*ShardHandler)
+
+	// Fill segment data.
+	hs.segments = hs.dfsServer.mOp.FindAllSegmentsOrderByDomain()
+	for _, seg := range hs.segments {
+		log.Printf("segment: [Domain:%d, ns:%s, ms:%s]",
+			seg.Domain, seg.NormalServer, seg.MigrateServer)
+	}
+
+	// Initialize storage servers
+	shards := hs.dfsServer.mOp.FindAllShards()
+
+	for _, shard := range shards {
+		hs.addHandler(shard)
+	}
+
+	return hs, nil
 }
 
 // healthCheck detects a handler for its health.
@@ -356,51 +475,4 @@ func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
 		log.Printf("check handler %v expired", handler.Name())
 		return statusFailure
 	}
-}
-
-// copyFile copies a file from src to dst.
-func copyFile(dst, src fileop.DFSFileHandler, info *FileRecoveryInfo) error {
-	rf, err := src.Open(info.Fid, info.Domain)
-	if err != nil {
-		return err
-	}
-	defer rf.Close()
-
-	wf, err := dst.Create(rf.GetFileInfo())
-	if err != nil {
-		return err
-	}
-	defer wf.Close()
-
-	size, err := io.Copy(wf, rf)
-	if err != nil {
-		return err
-	}
-
-	if size != rf.GetFileInfo().Size {
-		return fmt.Errorf("Copy file %s, size error: expected %d, actual %d",
-			info.String(), rf.GetFileInfo().Size, size)
-	}
-
-	return nil
-}
-
-// FindPerfectSegment finds a perfect segment for domain.
-// Segments must be in ascending order.
-func FindPerfectSegment(segments []*metadata.Segment, domain int64) *metadata.Segment {
-	var result *metadata.Segment
-
-	for _, seg := range segments {
-		if domain > seg.Domain {
-			result = seg
-			continue
-		} else if domain == seg.Domain {
-			result = seg
-			break
-		} else {
-			break
-		}
-	}
-
-	return result
 }

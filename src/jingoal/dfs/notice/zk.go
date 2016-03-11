@@ -10,20 +10,20 @@ import (
 )
 
 const (
-	// Watchers on ServerPath will be noticed when storage server node changed.
+	// Watchers on ShardServerPath will be noticed when storage server node changed.
 	// compatible with old version.
-	ServerPath = "/shard/server"
+	ShardServerPath = "/shard/server"
 
-	// Watchers on ChunkPath will be noticed when segment changed,
+	// Watchers on ShardChunkPath will be noticed when segment changed,
 	// compatible with old version.
-	ChunkPath = "/shard/chunk"
+	ShardChunkPath = "/shard/chunk"
+
+	// Watchers on ShardDfsPath will be noticed when other DFSServer changed.
+	ShardDfsPath = "/shard/dfs"
 
 	// This two for file migration.
 	NodePath   = "/shard/nodes"
 	NoticePath = "/shard/notice"
-
-	// Watchers on DFSServerPath will be noticed when other DFSServer changed.
-	DFSServerPath = "/shard/dfs"
 )
 
 // DfsZK implements Notice interface.
