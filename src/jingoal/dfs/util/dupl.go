@@ -3,11 +3,11 @@ package util
 import "strings"
 
 const (
-	duplPrefix = "_"
+	duplPrefix = '_'
 )
 
 func IsDuplId(id string) bool {
-	if id[0] == duplPrefix[0] {
+	if id[0] == duplPrefix {
 		return true
 	}
 
@@ -19,7 +19,7 @@ func GetDuplId(id string) string {
 		return id
 	}
 
-	return strings.Join([]string{duplPrefix, id}, "")
+	return strings.Join([]string{string(duplPrefix), id}, "")
 }
 
 func GetRealId(id string) string {
