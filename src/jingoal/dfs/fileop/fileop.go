@@ -48,6 +48,11 @@ type DFSFileHandler interface {
 	// Close releases resources the handler holds.
 	Close() error
 
+	// Find finds a file, if the file not exists, return empty string.
+	// If the file exists, return its file id.
+	// If the file exists and is a duplication, return its primitive file id.
+	Find(fid string) (string, error)
+
 	// Name returns handler's name.
 	Name() string
 

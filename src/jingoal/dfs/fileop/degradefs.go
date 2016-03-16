@@ -44,6 +44,13 @@ func (h *DegradeHandler) Open(id string, domain int64) (DFSFile, error) {
 	return h.fh.Open(id, domain)
 }
 
+// Find finds a file, if the file not exists, return empty string.
+// If the file exists, return its file id.
+// If the file exists and is a duplication, return its primitive file id.
+func (h *DegradeHandler) Find(fid string) (string, error) {
+	return h.fh.Find(fid)
+}
+
 // Remove deletes a file with its id and domain.
 func (h *DegradeHandler) Remove(id string, domain int64) error {
 	return h.fh.Remove(id, domain)

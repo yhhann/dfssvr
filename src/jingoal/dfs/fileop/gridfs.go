@@ -2,12 +2,14 @@ package fileop
 
 import (
 	"fmt"
+	"log"
 
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
 	"jingoal/dfs/metadata"
 	"jingoal/dfs/transfer"
+	"jingoal/dfs/util"
 )
 
 // GridFsHandler implements DFSFileHandler.
@@ -75,6 +77,38 @@ func (h *GridFsHandler) Open(id string, domain int64) (DFSFile, error) {
 	}
 
 	return dfsFile, nil
+}
+
+// Find finds a file, if the file not exists, return empty string.
+// If the file exists, return its file id.
+// If the file exists and is a duplication, return its primitive file id.
+func (h *GridFsHandler) Find(fid string) (string, error) {
+	var id string
+	if util.IsDuplId(fid) {
+		// TODO:(hanyh) to find a dupl file.
+		// id = ...
+	} else {
+		id = fid
+	}
+
+	file, err := h.gridfs.OpenId(bson.ObjectIdHex(id))
+	if err == mgo.ErrNotFound {
+		return "", nil
+	}
+	if err != nil {
+		log.Printf("Failed to find file %s", fid)
+		return "", err
+	}
+
+	oid, ok := file.Id().(bson.ObjectId)
+	if !ok {
+		log.Printf("Failed to find file %s", fid)
+		return "", fmt.Errorf("find file error %s", fid)
+	}
+
+	log.Printf("Succeeded to find file %s, return %s", fid, oid.Hex())
+
+	return oid.Hex(), nil
 }
 
 // Remove deletes a file with its id and domain.
