@@ -1,4 +1,5 @@
 export GOPATH := ${GOPATH}:$(shell pwd)
+export LDFLAG=" -s -X main.buildTime=`date -u '+%Y%m%d-%I%M%S%Z'`"
 
 all: dfs
 	@echo "make dfs          : build dfs"
@@ -7,8 +8,8 @@ all: dfs
 	@echo "make clean        : clean dfs binary"
 
 dfs: fmt
-	go install jingoal/dfs/cmd/dfs/dfscln
-	go install jingoal/dfs/cmd/dfs/dfssvr
+	go install -ldflags ${LDFLAG} jingoal/dfs/cmd/dfs/dfscln
+	go install -ldflags ${LDFLAG} jingoal/dfs/cmd/dfs/dfssvr
 
 proto:
 	protoc -Isrc --go_out=plugins=grpc:src src/jingoal/dfs/proto/discovery/*.proto

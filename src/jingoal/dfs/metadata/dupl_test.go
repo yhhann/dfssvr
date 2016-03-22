@@ -1,11 +1,18 @@
 package metadata
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestSaveAndRemoveRef(t *testing.T) {
-	dup, err := NewDuplicating("dupl-test", dbUri)
+	session, err := OpenMongoSession(dbUri)
 	if err != nil {
-		t.Errorf("NewDuplicating error %v", err)
+		t.Errorf("OpenMongoSession error %v", err)
+	}
+
+	dup, err := NewDuplicateOp(session, "dupl-test", "fs")
+	if err != nil {
+		t.Errorf("NewDuplicateOp error %v", err)
 	}
 
 	ref := Ref{
@@ -31,16 +38,24 @@ func TestSaveAndRemoveRef(t *testing.T) {
 		t.Errorf("RemoveRef error %v", err)
 	}
 
-	_, err = dup.LookupRefById(ref.Id)
-	if err == nil {
+	nothing, err := dup.LookupRefById(ref.Id)
+	if err != nil {
 		t.Errorf("LookupRefById error %v", err)
+	}
+	if nothing != nil {
+		t.Errorf("LookupRefById error, must be nothing.")
 	}
 }
 
 func TestIncDecRef(t *testing.T) {
-	dup, err := NewDuplicating("dupl-test", dbUri)
+	session, err := OpenMongoSession(dbUri)
 	if err != nil {
-		t.Errorf("NewDuplicating error %v", err)
+		t.Errorf("OpenMongoSession error %v", err)
+	}
+
+	dup, err := NewDuplicateOp(session, "dupl-test", "fs")
+	if err != nil {
+		t.Errorf("NewDuplicateOp error %v", err)
 	}
 
 	ref := Ref{
@@ -84,9 +99,14 @@ func TestIncDecRef(t *testing.T) {
 }
 
 func TestDupl(t *testing.T) {
-	op, err := NewDuplicating("dupl-test", dbUri)
+	session, err := OpenMongoSession(dbUri)
 	if err != nil {
-		t.Errorf("NewDuplicating error %v", err)
+		t.Errorf("OpenMongoSession error %v", err)
+	}
+
+	op, err := NewDuplicateOp(session, "dupl-test", "fs")
+	if err != nil {
+		t.Errorf("NewDuplicateOp error %v", err)
 	}
 
 	ref := Ref{

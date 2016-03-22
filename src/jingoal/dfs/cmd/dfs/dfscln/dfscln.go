@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	"gopkg.in/mgo.v2/bson"
@@ -20,14 +21,30 @@ import (
 var (
 	serverAddr            = flag.String("server-addr", "127.0.0.1:10000", "server address")
 	chunkSizeInBytes      = flag.Int("chunk-size", 1024, "chunk size in bytes")
-	fileCount             = flag.Int("file-count", 10, "file count")
+	fileCount             = flag.Int("file-count", 3, "file count")
 	domain                = flag.Int64("domain", 2, "domain")
 	finalWaitTimeInSecond = flag.Int("final-wait", 10, "the final wait time in seconds")
+	version               = flag.Bool("v", false, "print version")
+
+	buildTime = ""
 )
+
+func checkFlags() {
+	if buildTime == "" {
+		log.Println("Error: Build time not set!")
+		os.Exit(0)
+	}
+
+	if *version {
+		fmt.Printf("Build time: %s\n", buildTime)
+		os.Exit(0)
+	}
+}
 
 // This is a test client for DFSServer, full function client built in Java.
 func main() {
 	flag.Parse()
+	checkFlags()
 
 	conn, err := grpc.Dial(*serverAddr, grpc.WithInsecure())
 	if err != nil {
@@ -74,6 +91,10 @@ func main() {
 	for _ = range done {
 	}
 
+	if *finalWaitTimeInSecond < 0 {
+		select {}
+	}
+
 	time.Sleep(time.Duration(*finalWaitTimeInSecond) * time.Second) // For test heartbeat.
 }
 
@@ -82,8 +103,8 @@ func acceptDfsServer(conn *grpc.ClientConn) error {
 	stream, err := client.GetDfsServers(context.Background(),
 		&discovery.GetDfsServersReq{
 			Client: &discovery.DfsClient{
-				Id:  "test-client-id",
-				Uri: "127.0.0.1:2222",
+				Id:  "golang-test-client",
+				Uri: "127.0.0.1:0000",
 			},
 		})
 	if err != nil {
@@ -107,12 +128,12 @@ func acceptDfsServer(conn *grpc.ClientConn) error {
 			case *discovery.GetDfsServersRep_Sl:
 				sl := union.Sl.GetServer()
 				for _, server := range sl {
-					fmt.Printf("server %+v\n", server)
+					log.Printf("server %+v\n", server)
 				}
 
 			// Heartbean can be used for server checking.
 			case *discovery.GetDfsServersRep_Hb:
-				fmt.Printf("heartbeat, server timestamp: %d\n", union.Hb.Timestamp)
+				log.Printf("heartbeat, server timestamp: %d\n", union.Hb.Timestamp)
 			}
 		}
 	}()

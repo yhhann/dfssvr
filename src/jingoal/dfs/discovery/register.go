@@ -54,19 +54,38 @@ func (r *ZKDfsServerRegister) Register(s *DfsServer) error {
 	}
 
 	// Register server
-	nodeName, data, errors := r.notice.Register(dfsPath, serverData, true /*startCheckRoutine*/)
+	nodeName, data, errors, clearFlag, sendFlag := r.notice.Register(dfsPath, serverData, true /*startCheckRoutine*/)
 	transfer.NodeName = filepath.Base(nodeName)
 
 	go func() {
 		for {
 			select {
+			case <-clearFlag:
+				r.clearDfsServerMap()
+
+			case <-sendFlag:
+				// r.observers is a map from key to channel.
+
+				// When a client invokes method GetDfsServers, a new channel which
+				// attached by the client will be added into r.observers, and when
+				// server detects a client is offline, the channel that client
+				// attached will be removed from r.observers.
+				go func() {
+					for ob := range r.observers {
+						ob <- struct{}{}
+					}
+				}()
+				log.Printf("send flag is set")
+
 			case changedServer := <-data: // Get changed server and update serverMap.
 				server := new(DfsServer)
 				if err := json.Unmarshal(changedServer, server); err != nil {
 					log.Printf("json.Unmarshal error: %v", err)
 					continue
 				}
+				log.Printf("add server %v", server)
 				r.putDfsServerToMap(server)
+
 			case err := <-errors:
 				log.Printf("notice routine error %v", err)
 				if r.registered {
@@ -95,18 +114,21 @@ func (r *ZKDfsServerRegister) putDfsServerToMap(server *DfsServer) {
 	defer r.rwmu.Unlock()
 
 	r.serverMap[server.Id] = server
+}
 
-	// r.observers is a map which key hold channel.
+// ClearDfsServerMap clears the map of DfsServer.
+func (r *ZKDfsServerRegister) clearDfsServerMap() {
+	r.rwmu.Lock()
+	defer r.rwmu.Unlock()
 
-	// When a client invokes method GetDfsServers, a new channel which
-	// attached by the client will be added into r.observers, and when
-	// server detects a client is offline, the channel that client
-	// attached will be removed from r.observers.
-	go func() {
-		for ob := range r.observers {
-			ob <- struct{}{}
-		}
-	}()
+	initialSize := len(r.serverMap)
+	r.serverMap = make(map[string]*DfsServer, initialSize)
+
+	for k := range r.serverMap {
+		delete(r.serverMap, k)
+	}
+
+	log.Printf("DfsServerMap cleared")
 }
 
 // AddObserver adds an observer for DfsServer node changed.

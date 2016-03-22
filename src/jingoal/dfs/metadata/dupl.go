@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"strings"
 	"time"
 
 	"gopkg.in/mgo.v2"
@@ -8,8 +9,8 @@ import (
 )
 
 const (
-	DUPL_COL = "fs.dupl"
-	RC_COL   = "fs.rc"
+	DUPL_COL = "dupl"
+	RC_COL   = "rc"
 )
 
 type Dupl struct {
@@ -27,14 +28,16 @@ type Ref struct {
 	UploadDate time.Time     `bson:"uploadDate"` // upload date
 }
 
-type Duplicating struct {
-	uri    string
-	dbName string
-
+type DuplicateOp struct {
 	session *mgo.Session
+	dbName  string
+
+	prefix      string
+	duplColName string
+	rcColName   string
 }
 
-func (d *Duplicating) execute(target func(session *mgo.Session) error) error {
+func (d *DuplicateOp) execute(target func(session *mgo.Session) error) error {
 	localSession := d.session.Copy()
 	defer localSession.Close()
 
@@ -42,7 +45,7 @@ func (d *Duplicating) execute(target func(session *mgo.Session) error) error {
 }
 
 // SaveDupl saves a dupl.
-func (d *Duplicating) SaveDupl(dupl *Dupl) error {
+func (d *DuplicateOp) SaveDupl(dupl *Dupl) error {
 	if string(dupl.Id) == "" {
 		dupl.Id = bson.NewObjectId()
 	}
@@ -54,12 +57,12 @@ func (d *Duplicating) SaveDupl(dupl *Dupl) error {
 	}
 
 	return d.execute(func(session *mgo.Session) error {
-		return session.DB(d.dbName).C(DUPL_COL).Insert(*dupl)
+		return session.DB(d.dbName).C(d.duplColName).Insert(*dupl)
 	})
 }
 
 // SaveRef saves a reference.
-func (d *Duplicating) SaveRef(ref *Ref) error {
+func (d *DuplicateOp) SaveRef(ref *Ref) error {
 	if string(ref.Id) == "" {
 		ref.Id = bson.NewObjectId()
 	}
@@ -71,16 +74,20 @@ func (d *Duplicating) SaveRef(ref *Ref) error {
 	}
 
 	return d.execute(func(session *mgo.Session) error {
-		return session.DB(d.dbName).C(RC_COL).Insert(*ref)
+		return session.DB(d.dbName).C(d.rcColName).Insert(*ref)
 	})
 }
 
 // LookupRefById looks up a ref by its id.
-func (d *Duplicating) LookupRefById(id bson.ObjectId) (*Ref, error) {
+func (d *DuplicateOp) LookupRefById(id bson.ObjectId) (*Ref, error) {
 	ref := new(Ref)
-	if err := d.execute(func(session *mgo.Session) error {
-		return session.DB(d.dbName).C(RC_COL).FindId(id).One(ref)
-	}); err != nil {
+	err := d.execute(func(session *mgo.Session) error {
+		return session.DB(d.dbName).C(d.rcColName).FindId(id).One(ref)
+	})
+	if err == mgo.ErrNotFound {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -88,11 +95,15 @@ func (d *Duplicating) LookupRefById(id bson.ObjectId) (*Ref, error) {
 }
 
 // LookupDuplById looks up a dupl by its id.
-func (d *Duplicating) LookupDuplById(id bson.ObjectId) (*Dupl, error) {
+func (d *DuplicateOp) LookupDuplById(id bson.ObjectId) (*Dupl, error) {
 	dupl := new(Dupl)
-	if err := d.execute(func(session *mgo.Session) error {
-		return session.DB(d.dbName).C(DUPL_COL).FindId(id).One(dupl)
-	}); err != nil {
+	err := d.execute(func(session *mgo.Session) error {
+		return session.DB(d.dbName).C(d.duplColName).FindId(id).One(dupl)
+	})
+	if err == mgo.ErrNotFound {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -100,11 +111,11 @@ func (d *Duplicating) LookupDuplById(id bson.ObjectId) (*Dupl, error) {
 }
 
 // LookupDuplByRefid looks up a dupl by its ref id.
-func (d *Duplicating) LookupDuplByRefid(rid bson.ObjectId) []*Dupl {
+func (d *DuplicateOp) LookupDuplByRefid(rid bson.ObjectId) []*Dupl {
 	result := make([]*Dupl, 0, 10)
 
 	d.execute(func(session *mgo.Session) error {
-		iter := session.DB(d.dbName).C(DUPL_COL).Find(bson.M{"reference": rid}).Iter()
+		iter := session.DB(d.dbName).C(d.duplColName).Find(bson.M{"reference": rid}).Iter()
 		defer iter.Close()
 
 		for dupl := new(Dupl); iter.Next(dupl); dupl = new(Dupl) {
@@ -118,9 +129,9 @@ func (d *Duplicating) LookupDuplByRefid(rid bson.ObjectId) []*Dupl {
 }
 
 // RemoveDupl removes a dupl by its id.
-func (d *Duplicating) RemoveDupl(id bson.ObjectId) error {
+func (d *DuplicateOp) RemoveDupl(id bson.ObjectId) error {
 	if err := d.execute(func(session *mgo.Session) error {
-		return session.DB(d.dbName).C(DUPL_COL).RemoveId(id)
+		return session.DB(d.dbName).C(d.duplColName).RemoveId(id)
 	}); err != nil {
 		return err
 	}
@@ -129,9 +140,9 @@ func (d *Duplicating) RemoveDupl(id bson.ObjectId) error {
 }
 
 // RemoveRef removes a ref by its id.
-func (d *Duplicating) RemoveRef(id bson.ObjectId) error {
+func (d *DuplicateOp) RemoveRef(id bson.ObjectId) error {
 	if err := d.execute(func(session *mgo.Session) error {
-		return session.DB(d.dbName).C(RC_COL).RemoveId(id)
+		return session.DB(d.dbName).C(d.rcColName).RemoveId(id)
 	}); err != nil {
 		return err
 	}
@@ -140,7 +151,7 @@ func (d *Duplicating) RemoveRef(id bson.ObjectId) error {
 }
 
 // IncRefCnt increases reference count.
-func (d *Duplicating) IncRefCnt(id bson.ObjectId) (*Ref, error) {
+func (d *DuplicateOp) IncRefCnt(id bson.ObjectId) (*Ref, error) {
 	change := mgo.Change{
 		Update: bson.M{
 			"$inc": bson.M{
@@ -152,7 +163,7 @@ func (d *Duplicating) IncRefCnt(id bson.ObjectId) (*Ref, error) {
 
 	result := new(Ref)
 	if err := d.execute(func(session *mgo.Session) error {
-		_, err := session.DB(d.dbName).C(RC_COL).Find(bson.M{"_id": id}).Apply(change, result)
+		_, err := session.DB(d.dbName).C(d.rcColName).Find(bson.M{"_id": id}).Apply(change, result)
 		return err
 	}); err != nil {
 		return nil, err
@@ -162,7 +173,7 @@ func (d *Duplicating) IncRefCnt(id bson.ObjectId) (*Ref, error) {
 }
 
 // DecRefCnt decreases reference count.
-func (d *Duplicating) DecRefCnt(id bson.ObjectId) (*Ref, error) {
+func (d *DuplicateOp) DecRefCnt(id bson.ObjectId) (*Ref, error) {
 	change := mgo.Change{
 		Update: bson.M{
 			"$inc": bson.M{
@@ -174,7 +185,7 @@ func (d *Duplicating) DecRefCnt(id bson.ObjectId) (*Ref, error) {
 
 	result := new(Ref)
 	if err := d.execute(func(session *mgo.Session) error {
-		_, err := session.DB(d.dbName).C(RC_COL).Find(bson.M{"_id": id}).Apply(change, result)
+		_, err := session.DB(d.dbName).C(d.rcColName).Find(bson.M{"_id": id}).Apply(change, result)
 		return err
 	}); err != nil {
 		return nil, err
@@ -183,17 +194,15 @@ func (d *Duplicating) DecRefCnt(id bson.ObjectId) (*Ref, error) {
 	return result, nil
 }
 
-// NewDuplicating creates a Duplicating object with given mongodb uri
+// NewDuplicateOp creates a DuplicateOp object with given session
 // and database name.
-func NewDuplicating(dbName string, uri string) (*Duplicating, error) {
-	session, err := OpenMongoSession(uri)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Duplicating{
-		uri:     uri,
-		dbName:  dbName,
-		session: session,
+//func NewDuplicateOp(dbName string, uri string) (*DuplicateOp, error) {
+func NewDuplicateOp(session *mgo.Session, dbName string, prefix string) (*DuplicateOp, error) {
+	return &DuplicateOp{
+		dbName:      dbName,
+		prefix:      prefix,
+		session:     session,
+		duplColName: strings.Join([]string{prefix, DUPL_COL}, "."),
+		rcColName:   strings.Join([]string{prefix, RC_COL}, "."),
 	}, nil
 }

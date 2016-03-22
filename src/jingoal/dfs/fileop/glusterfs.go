@@ -22,10 +22,13 @@ import (
 // GlusterHandler implements DFSFileHandler.
 type GlusterHandler struct {
 	*metadata.Shard
-	*gfapi.Volume
-	gridfs  *mgo.GridFS
+
 	session *mgo.Session
-	VolLog  string // Log file name of gluster volume
+	gridfs  *mgo.GridFS
+	duplfs  *DuplFs
+
+	*gfapi.Volume
+	VolLog string // Log file name of gluster volume
 }
 
 // Name returns handler's name.
@@ -112,10 +115,7 @@ func (h *GlusterHandler) createGlusterFile(name string) (*GlusterFile, error) {
 
 // Open opens a file for read.
 func (h *GlusterHandler) Open(id string, domain int64) (DFSFile, error) {
-	if !bson.IsObjectIdHex(id) {
-		return nil, fmt.Errorf("file id is not an ObjectId: %v", id)
-	}
-	gridFile, err := h.gridfs.OpenId(bson.ObjectIdHex(id))
+	gridFile, err := h.duplfs.Find(id)
 	if err != nil {
 		return nil, err
 	}
@@ -141,48 +141,45 @@ func (h *GlusterHandler) Open(id string, domain int64) (DFSFile, error) {
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
-func (h *GlusterHandler) Find(fid string) (string, error) {
-	var id string
-	if util.IsDuplId(fid) {
-		// TODO:(hanyh) to find a dupl file.
-		// id = ...
-	} else {
-		id = fid
-	}
-
-	file, err := h.gridfs.OpenId(bson.ObjectIdHex(id))
+func (h *GlusterHandler) Find(id string) (string, error) {
+	gridFile, err := h.duplfs.Find(id)
 	if err == mgo.ErrNotFound {
 		return "", nil
 	}
 	if err != nil {
-		log.Printf("Failed to find file %s", fid)
+		log.Printf("Failed to find file %s", id)
 		return "", err
 	}
+	defer gridFile.Close()
 
-	oid, ok := file.Id().(bson.ObjectId)
+	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		log.Printf("Failed to find file %s", fid)
-		return "", fmt.Errorf("find file error %s", fid)
+		log.Printf("Failed to find file %s", id)
+		return "", fmt.Errorf("find file error %s", id)
 	}
 
-	log.Printf("Succeeded to find file %s, return %s", fid, oid.Hex())
+	log.Printf("Succeeded to find file %s, return %s", id, oid.Hex())
 
 	return oid.Hex(), nil
 }
 
 // Remove deletes file by its id and domain.
 func (h *GlusterHandler) Remove(id string, domain int64) error {
-	if !bson.IsObjectIdHex(id) {
-		return fmt.Errorf("file id is not an ObjectId: %v", id)
-	}
-
-	// TODO:(hanyh) log the remove event.
-	filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
-	if err := h.Unlink(filePath); err != nil {
+	result, err := h.duplfs.Delete(id)
+	if err != nil {
+		log.Printf("Failed to remove file %s", id)
 		return err
 	}
 
-	return h.gridfs.RemoveId(bson.ObjectIdHex(id))
+	if result {
+		// TODO:(hanyh) log the remove event.
+		filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
+		if err := h.Unlink(filePath); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
@@ -247,6 +244,13 @@ func NewGlusterHandler(shardInfo *metadata.Shard, volLog string) (*GlusterHandle
 
 	handler.session = session
 	handler.gridfs = session.Copy().DB(shardInfo.Name).GridFS("fs")
+
+	duplOp, err := metadata.NewDuplicateOp(session, shardInfo.Name, "fs")
+	if err != nil {
+		return nil, err
+	}
+
+	handler.duplfs = NewDuplFs(handler.gridfs, duplOp)
 
 	return handler, nil
 }

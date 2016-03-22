@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 
 	"jingoal/dfs/metadata"
 	"jingoal/dfs/transfer"
 )
 
 func TestServerStatus(t *testing.T) {
-	session, err := metadata.OpenMongoSession("mongodb://192.168.55.193:27017/")
+	session, err := metadata.OpenMongoSession(dbUri)
 	if err != nil {
 		t.Errorf("Open mongo session error: %v", err)
 	}
@@ -77,9 +78,9 @@ func TestGridFs(t *testing.T) {
 	}
 
 	fid := f.Id()
-	fids, ok := fid.(string)
+	fids, ok := fid.(bson.ObjectId)
 	if !ok {
-		t.Errorf("fid created is not string, %T", fid)
+		t.Errorf("fid is not ObjectId, %T", fid)
 	}
 
 	if err := file.Close(); err != nil {
@@ -87,7 +88,7 @@ func TestGridFs(t *testing.T) {
 	}
 
 	// Open file
-	nf, err := handler.Open(fids, 2)
+	nf, err := handler.Open(fids.Hex(), 2)
 	if err != nil {
 		t.Errorf("Open file error %v\n", err)
 	}
@@ -106,7 +107,7 @@ func TestGridFs(t *testing.T) {
 		t.Errorf("Close read file error %v\n", err)
 	}
 
-	if err := handler.Remove(fids, 2); err != nil {
+	if err := handler.Remove(fids.Hex(), 2); err != nil {
 		t.Errorf("Remove file error %v\n", err)
 	}
 }

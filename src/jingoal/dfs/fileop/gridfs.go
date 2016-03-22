@@ -9,15 +9,15 @@ import (
 
 	"jingoal/dfs/metadata"
 	"jingoal/dfs/transfer"
-	"jingoal/dfs/util"
 )
 
 // GridFsHandler implements DFSFileHandler.
 type GridFsHandler struct {
 	*metadata.Shard
 
-	gridfs  *mgo.GridFS
 	session *mgo.Session
+	gridfs  *mgo.GridFS
+	duplfs  *DuplFs
 }
 
 // Name returns handler's name.
@@ -56,7 +56,7 @@ func (h *GridFsHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 
 // Open opens a DFSFile for read with given id and domain.
 func (h *GridFsHandler) Open(id string, domain int64) (DFSFile, error) {
-	file, err := h.gridfs.OpenId(bson.ObjectIdHex(id))
+	gridFile, err := h.duplfs.Find(id)
 	if err != nil {
 		return nil, err
 	}
@@ -64,13 +64,13 @@ func (h *GridFsHandler) Open(id string, domain int64) (DFSFile, error) {
 	inf := &transfer.FileInfo{
 		Id:     id,
 		Domain: domain,
-		Name:   file.Name(),
-		Size:   file.Size(),
-		Md5:    file.MD5(),
+		Name:   gridFile.Name(),
+		Size:   gridFile.Size(),
+		Md5:    gridFile.MD5(),
 	}
 
 	dfsFile := &GridFsFile{
-		GridFile: file,
+		GridFile: gridFile,
 		info:     inf,
 		handler:  h,
 		mode:     FileModeRead,
@@ -82,38 +82,41 @@ func (h *GridFsHandler) Open(id string, domain int64) (DFSFile, error) {
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
-func (h *GridFsHandler) Find(fid string) (string, error) {
-	var id string
-	if util.IsDuplId(fid) {
-		// TODO:(hanyh) to find a dupl file.
-		// id = ...
-	} else {
-		id = fid
-	}
-
-	file, err := h.gridfs.OpenId(bson.ObjectIdHex(id))
+func (h *GridFsHandler) Find(id string) (string, error) {
+	gridFile, err := h.duplfs.Find(id)
 	if err == mgo.ErrNotFound {
 		return "", nil
 	}
 	if err != nil {
-		log.Printf("Failed to find file %s", fid)
+		log.Printf("Failed to find file %s", id)
 		return "", err
 	}
+	defer gridFile.Close()
 
-	oid, ok := file.Id().(bson.ObjectId)
+	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		log.Printf("Failed to find file %s", fid)
-		return "", fmt.Errorf("find file error %s", fid)
+		log.Printf("Failed to find file %s", id)
+		return "", fmt.Errorf("find file error %s", id)
 	}
 
-	log.Printf("Succeeded to find file %s, return %s", fid, oid.Hex())
+	log.Printf("Succeeded to find file %s, return %s", id, oid.Hex())
 
 	return oid.Hex(), nil
 }
 
 // Remove deletes a file with its id and domain.
 func (h *GridFsHandler) Remove(id string, domain int64) error {
-	return h.gridfs.RemoveId(bson.ObjectIdHex(id))
+	result, err := h.duplfs.Delete(id)
+	if err != nil {
+		log.Printf("Failed to remove file %s", id)
+		return err
+	}
+
+	if result {
+		//TODO:(hanyh) log this event for audit.
+	}
+
+	return nil
 }
 
 // Close releases resources the handler holds.
@@ -146,6 +149,13 @@ func NewGridFsHandler(shardInfo *metadata.Shard) (*GridFsHandler, error) {
 
 	handler.session = session
 	handler.gridfs = session.Copy().DB(shardInfo.Name).GridFS("fs")
+
+	duplOp, err := metadata.NewDuplicateOp(session, shardInfo.Name, "fs")
+	if err != nil {
+		return nil, err
+	}
+
+	handler.duplfs = NewDuplFs(handler.gridfs, duplOp)
 
 	return handler, nil
 }

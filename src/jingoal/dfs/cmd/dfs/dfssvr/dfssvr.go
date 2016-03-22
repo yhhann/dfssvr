@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -23,9 +24,22 @@ var (
 	shardDbName = flag.String("shard-name", "shard", "shard database name")
 	shardDbUri  = flag.String("shard-dburi", "mongodb://127.0.0.1:27017", "shard database uri")
 	logDir      = flag.String("log-dir", "/var/log/dfs", "The log directory.")
+	version     = flag.Bool("v", false, "print version")
+
+	buildTime = ""
 )
 
 func checkFlags() {
+	if buildTime == "" {
+		log.Println("Error: Build time not set!")
+		os.Exit(0)
+	}
+
+	if *version {
+		fmt.Printf("Build time: %s\n", buildTime)
+		os.Exit(0)
+	}
+
 	if *name == "" {
 		log.Println("Error: flag --server-name is required.")
 		os.Exit(1)
@@ -70,6 +84,7 @@ func setupLog() {
 func main() {
 	flag.Parse()
 	checkFlags()
+
 	setupLog()
 
 	lis, err := net.Listen("tcp", *lsnAddr)

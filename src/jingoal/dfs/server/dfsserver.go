@@ -110,6 +110,11 @@ func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream dis
 		return err
 	}
 
+	log.Printf("Succeeded to send DfsServers to client: %s", req.GetClient().String())
+	for _, s := range ss {
+		log.Printf("DfsServer: %s", s)
+	}
+
 	return nil
 }
 

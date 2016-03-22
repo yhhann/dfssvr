@@ -84,11 +84,13 @@ func (k *DfsZK) CheckChildren(path string) (<-chan []string, <-chan error) {
 				return
 			}
 			snapshots <- snapshot
+
 			evt := <-events
 			if evt.Err != nil {
 				errors <- evt.Err
 				return
 			}
+			log.Printf("event type: %v", evt.Type)
 		}
 	}()
 
@@ -140,28 +142,36 @@ func (k *DfsZK) createEphemeralSequenceNode(prefix string, data []byte) (string,
 
 // Register registers a server.
 // if check is true, the returned chan will be noticed when sibling changed.
-func (k *DfsZK) Register(prefix string, data []byte, startCheckRoutine bool) (string, <-chan []byte, <-chan error) {
+func (k *DfsZK) Register(prefix string, data []byte, startCheckRoutine bool) (string, <-chan []byte, <-chan error, <-chan struct{}, <-chan struct{}) {
 	siblings, errs := k.CheckChildren(filepath.Dir(prefix))
 
 	results := make(chan []byte)
 	errors := make(chan error)
+	clearFlag := make(chan struct{})
+	sendFlag := make(chan struct{})
+
 	if startCheckRoutine {
 		go func() {
 			for {
 				select {
 				case sn := <-siblings:
 					sort.Sort(sort.StringSlice(sn))
+
+					clearFlag <- struct{}{}
+
 					for _, s := range sn {
 						path := filepath.Join(filepath.Dir(prefix), s)
 						d, err := k.GetData(path)
 						if err != nil {
-							log.Print(err)
+							log.Printf("node lost %v, %v", path, err)
 							errors <- err
 							continue
 						}
 
 						results <- d
 					}
+
+					sendFlag <- struct{}{}
 
 				case err := <-errs:
 					errors <- err
@@ -175,7 +185,7 @@ func (k *DfsZK) Register(prefix string, data []byte, startCheckRoutine bool) (st
 	if err != nil {
 		errors <- err
 	}
-	return path, results, errors
+	return path, results, errors, clearFlag, sendFlag
 }
 
 // NewDfsZK creates a new DfsZk.
