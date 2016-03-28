@@ -34,7 +34,7 @@ type FileRecoveryInfo struct {
 
 func (rInfo *FileRecoveryInfo) String() string {
 	return fmt.Sprintf("fid: %s, domain: %d, id: %s",
-		rInfo.Fid, rInfo.Domain, rInfo.Id.String())
+		rInfo.Fid, rInfo.Domain, rInfo.Id.Hex())
 }
 
 // HandlerSelector selects a perfect file handler for dfs server.

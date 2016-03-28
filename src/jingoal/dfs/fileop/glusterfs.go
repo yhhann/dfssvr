@@ -70,7 +70,7 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		return nil, fmt.Errorf("id %v is not an ObjectId", gridFile.Id())
+		return nil, fmt.Errorf("Invalid ObjectId: %v", gridFile.Id())
 	}
 
 	// For compatible with dfs 1.0.
@@ -138,6 +138,11 @@ func (h *GlusterHandler) Open(id string, domain int64) (DFSFile, error) {
 	return result, nil
 }
 
+// Duplicate duplicates an entry for a file.
+func (h *GlusterHandler) Duplicate(oid string) (string, error) {
+	return h.duplfs.Duplicate(oid)
+}
+
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
@@ -164,22 +169,23 @@ func (h *GlusterHandler) Find(id string) (string, error) {
 }
 
 // Remove deletes file by its id and domain.
-func (h *GlusterHandler) Remove(id string, domain int64) error {
+func (h *GlusterHandler) Remove(id string, domain int64) (bool, error) {
 	result, err := h.duplfs.Delete(id)
 	if err != nil {
-		log.Printf("Failed to remove file %s", id)
-		return err
+		log.Printf("Failed to remove file: %s, error: %v", id, err)
+		return false, err
 	}
 
 	if result {
 		// TODO:(hanyh) log the remove event.
+		log.Printf("Succeeded to remove file: %s", id)
 		filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
-			return err
+			return result, err
 		}
 	}
 
-	return nil
+	return result, nil
 }
 
 func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
@@ -224,6 +230,21 @@ func (h *GlusterHandler) IsHealthy() bool {
 	}
 
 	return true
+}
+
+// FindByMd5 finds a file by its md5.
+func (h *GlusterHandler) FindByMd5(md5 string, domain int64, size int64) (string, error) {
+	file, err := h.duplfs.FindByMd5(md5, domain, size)
+	if err != nil {
+		return "", err
+	}
+
+	oid, ok := file.Id().(bson.ObjectId)
+	if !ok {
+		return "", fmt.Errorf("Invalid Object: %T", file.Id())
+	}
+
+	return oid.Hex(), nil
 }
 
 // NewGlusterHandler creates a GlusterHandler.

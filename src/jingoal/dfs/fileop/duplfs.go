@@ -14,13 +14,32 @@ import (
 )
 
 var (
-	FileNotFound    = errors.New("file not found")
-	InvalidObjectId = errors.New("invalid ObjectId")
+	FileNotFound = errors.New("file not found")
 )
 
 type DuplFs struct {
 	gridfs *mgo.GridFS
 	op     *metadata.DuplicateOp
+}
+
+// FindByMd5 finds a gridfs file by its md5.
+func (duplfs *DuplFs) FindByMd5(md5 string, domain int64, size int64) (*mgo.GridFile, error) {
+	file := new(mgo.GridFile)
+
+	query := bson.D{
+		{"domain", domain},
+		{"md5", md5},
+		{"length", size},
+	}
+
+	iter := duplfs.gridfs.Find(query).Sort("-uploadDate").Iter()
+	defer iter.Close()
+
+	if ok := duplfs.gridfs.OpenNext(iter, &file); ok {
+		return file, nil
+	}
+
+	return nil, FileNotFound
 }
 
 // Find finds a file with given id.
@@ -130,11 +149,14 @@ func (duplfs *DuplFs) DuplicateWithId(oid string, dupId string, uploadDate time.
 		Length: ref.Length,
 	}
 
-	dupHex, err := hexString2ObjectId(dupId)
-	if err != nil {
-		return "", err
+	if dupId != "" {
+		dupHex, err := hexString2ObjectId(dupId)
+		if err != nil {
+			return "", err
+		}
+		dupl.Id = *dupHex
 	}
-	dupl.Id = *dupHex
+
 	dupl.UploadDate = uploadDate
 
 	if err := duplfs.op.SaveDupl(&dupl); err != nil {
@@ -228,5 +250,5 @@ func hexString2ObjectId(hex string) (*bson.ObjectId, error) {
 		return &oid, nil
 	}
 
-	return nil, InvalidObjectId
+	return nil, fmt.Errorf("Invalid ObjectId: %s", hex)
 }

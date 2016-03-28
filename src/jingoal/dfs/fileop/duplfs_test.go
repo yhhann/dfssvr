@@ -1,6 +1,7 @@
 package fileop
 
 import (
+	"log"
 	"testing"
 	"time"
 
@@ -137,4 +138,18 @@ func TestDuplicate(t *testing.T) {
 	if err == nil {
 		t.Errorf("find file error: file must be lost.")
 	}
+}
+
+func TestFindByMd5(t *testing.T) {
+	duplfs, err := prepareDuplFs()
+	if err != nil {
+		t.Errorf("prepare DuplFs error: %v", err)
+	}
+
+	f, err := duplfs.FindByMd5("6ea093b7e26047e9dab7d4b5e134e075", 5, 1858)
+	if err != nil {
+		t.Errorf("Find by md5 error: %v", err)
+	}
+
+	log.Printf("%+v", f)
 }

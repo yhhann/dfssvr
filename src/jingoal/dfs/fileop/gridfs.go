@@ -79,6 +79,11 @@ func (h *GridFsHandler) Open(id string, domain int64) (DFSFile, error) {
 	return dfsFile, nil
 }
 
+// Duplicate duplicates an entry for a file.
+func (h *GridFsHandler) Duplicate(oid string) (string, error) {
+	return h.duplfs.Duplicate(oid)
+}
+
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
@@ -95,8 +100,7 @@ func (h *GridFsHandler) Find(id string) (string, error) {
 
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		log.Printf("Failed to find file %s", id)
-		return "", fmt.Errorf("find file error %s", id)
+		return "", fmt.Errorf("Invalid ObjectId: %s", gridFile.Id())
 	}
 
 	log.Printf("Succeeded to find file %s, return %s", id, oid.Hex())
@@ -105,18 +109,19 @@ func (h *GridFsHandler) Find(id string) (string, error) {
 }
 
 // Remove deletes a file with its id and domain.
-func (h *GridFsHandler) Remove(id string, domain int64) error {
+func (h *GridFsHandler) Remove(id string, domain int64) (bool, error) {
 	result, err := h.duplfs.Delete(id)
 	if err != nil {
-		log.Printf("Failed to remove file %s", id)
-		return err
+		log.Printf("Failed to remove file: %s, error: %v", id, err)
+		return false, err
 	}
 
 	if result {
 		//TODO:(hanyh) log this event for audit.
+		log.Printf("Succeeded to remove file: %s", id)
 	}
 
-	return nil
+	return result, nil
 }
 
 // Close releases resources the handler holds.
@@ -134,6 +139,21 @@ func (h *GridFsHandler) HandlerType() HandlerType {
 func (h *GridFsHandler) IsHealthy() bool {
 	err := h.session.Run("serverStatus", nil)
 	return err == nil
+}
+
+// FindByMd5 finds a file by its md5.
+func (h *GridFsHandler) FindByMd5(md5 string, domain int64, size int64) (string, error) {
+	file, err := h.duplfs.FindByMd5(md5, domain, size)
+	if err != nil {
+		return "", err
+	}
+
+	oid, ok := file.Id().(bson.ObjectId)
+	if !ok {
+		return "", fmt.Errorf("Invalid Object: %T", file.Id())
+	}
+
+	return oid.Hex(), nil
 }
 
 // NewGridFsHandler returns a handler for processing Grid files.

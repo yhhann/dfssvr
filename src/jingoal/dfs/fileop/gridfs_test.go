@@ -107,7 +107,7 @@ func TestGridFs(t *testing.T) {
 		t.Errorf("Close read file error %v\n", err)
 	}
 
-	if err := handler.Remove(fids.Hex(), 2); err != nil {
+	if _, err := handler.Remove(fids.Hex(), 2); err != nil {
 		t.Errorf("Remove file error %v\n", err)
 	}
 }

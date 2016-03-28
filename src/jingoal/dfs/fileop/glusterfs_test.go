@@ -78,7 +78,7 @@ func TestGlusterFs(t *testing.T) {
 		t.Errorf("Close read file error %v\n", err)
 	}
 
-	if err := handler.Remove(fid, 2); err != nil {
+	if _, err := handler.Remove(fid, 2); err != nil {
 		t.Errorf("Remove file error %v\n", err)
 	}
 }

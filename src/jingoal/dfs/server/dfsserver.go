@@ -84,7 +84,6 @@ func (s *DFSServer) sendHeartbeat(req *discovery.GetDfsServersReq, stream discov
 	}
 
 	return nil
-
 }
 
 func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
@@ -197,17 +196,22 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 	}
 }
 
-func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFile, error) {
+func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFileHandler, fileop.DFSFile, error) {
+	var h fileop.DFSFileHandler
+
 	if mh != nil && nh != nil {
+		h = mh
 		file, err := mh.Open(id, domain)
 		if err != nil { // Need not to check mgo.ErrNotFound
+			h = nh
 			file, err = nh.Open(id, domain)
 		}
-		return file, err
+		return h, file, err
 	} else if mh == nil && nh != nil {
-		return nh.Open(id, domain)
+		f, err := nh.Open(id, domain)
+		return nh, f, err
 	} else {
-		return nil, fmt.Errorf("get file error: normal site is nil")
+		return nil, nil, fmt.Errorf("get file error: normal site is nil")
 	}
 }
 
@@ -224,7 +228,7 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 		m = *mh
 	}
 
-	file, err := searchFile(req.Id, req.Domain, *nh, m)
+	_, file, err := searchFile(req.Id, req.Domain, *nh, m)
 	if err != nil {
 		return err
 	}
@@ -264,62 +268,185 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 // Remove deletes a file.
 func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq) (*transfer.RemoveFileRep, error) {
 	log.Printf("RemoveFile, Request: %v %s %d\n", req.GetDesc().Desc, req.Id, req.Domain)
+	// TODO(hanyh): log the remove command for audit.
 
-	// TODO(hanyh): remove file from proper handler.
+	rep := &transfer.RemoveFileRep{}
+	var p fileop.DFSFileHandler
 
-	rep := transfer.RemoveFileRep{
-		Result: true, // For test.
+	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
+	if err != nil {
+		log.Printf("get handler for read error: %v", err)
+		return rep, err
 	}
 
-	return &rep, nil
+	if nh != nil {
+		p = *nh
+		rep.Result, err = p.Remove(req.Id, req.Domain)
+		if err != nil {
+			log.Printf("Failed to remove file %s from %v", req.Id, p.Name())
+		}
+	}
+
+	if mh != nil {
+		p = *mh
+		rep.Result, err = p.Remove(req.Id, req.Domain)
+		if err != nil {
+			log.Printf("Failed to remove file %s from %v", req.Id, p.Name())
+		}
+	}
+
+	// TODO(hanyh): log the remove result for audit.
+	log.Printf("Succeeded to remove file %s from %v", req.Id, p.Name())
+
+	return rep, nil
+}
+
+func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {
+	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
+	if err != nil {
+		return "", err
+	}
+
+	var m fileop.DFSFileHandler
+	if mh != nil {
+		m = *mh
+	}
+
+	h, file, err := searchFile(oid, domain, *nh, m)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// duplicate file from proper handler.
+	did, err := h.Duplicate(oid)
+	if err != nil {
+		return "", err
+	}
+
+	return did, nil
 }
 
 // Duplicate duplicates a file, returns a new fid.
 func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (*transfer.DuplicateRep, error) {
 	log.Printf("Duplicate, Request: %s, %d\n", req.Id, req.Domain)
 
-	// TODO(hanyh): duplicate file from proper handler.
-
-	rep := transfer.DuplicateRep{
-		Id: fmt.Sprintf("%s--dupl", req.Id), // For test.
+	did, err := s.duplicate(req.Id, req.Domain)
+	if err != nil {
+		log.Printf("Failed to duplicate %s[%d], error %v", req.Id, req.Domain, err)
+		return nil, err
 	}
-	return &rep, nil
+
+	return &transfer.DuplicateRep{
+		Id: did,
+	}, nil
+}
+
+func (s *DFSServer) exist(id string, domain int64) (bool, error) {
+	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
+	if err != nil {
+		return false, err
+	}
+
+	var m fileop.DFSFileHandler
+	if mh != nil {
+		m = *mh
+	}
+
+	_, file, err := searchFile(id, domain, *nh, m)
+	if err != nil {
+		return false, err
+	}
+	if file == nil {
+		return false, nil
+	}
+
+	file.Close()
+	return true, nil
 }
 
 // Exist checks existentiality of a file.
 func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (*transfer.ExistRep, error) {
 	log.Printf("Exist, Request: %s, %d\n", req.Id, req.Domain)
 
-	// TODO(hanyh):
+	result, err := s.exist(req.Id, req.Domain)
 
-	rep := transfer.ExistRep{
-		Result: true,
+	return &transfer.ExistRep{
+		Result: result,
+	}, err
+}
+
+func (s *DFSServer) findByMd5(md5 string, domain int64, size int64) (fileop.DFSFileHandler, string, error) {
+	var err error
+	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
+	if err != nil {
+		log.Printf("get handler for read error: %v", err)
+		return nil, "", err
 	}
-	return &rep, nil
+
+	var p fileop.DFSFileHandler
+	var oid string
+
+	if mh != nil {
+		p = *mh
+		oid, err = p.FindByMd5(md5, domain, size)
+		if err != nil {
+			if nh != nil {
+				p = *nh
+				oid, err = p.FindByMd5(md5, domain, size)
+				if err != nil {
+					return nil, "", err // Not found in m and n.
+				}
+			} else {
+				return nil, "", fileop.FileNotFound // Never reachs this line.
+			}
+		}
+	} else if nh != nil {
+		p = *nh
+		oid, err = p.FindByMd5(md5, domain, size)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
+	return p, oid, nil
 }
 
 // GetByMd5 gets a file by its md5.
 func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.GetByMd5Rep, error) {
 	log.Printf("GetByMd5, Request: %s, %d, %d\n", req.Md5, req.Domain, req.Size)
 
-	// TODO(hanyh):
-
-	rep := transfer.GetByMd5Rep{
-		Fid: "for-test-id", // For test.
+	p, oid, err := s.findByMd5(req.Md5, req.Domain, req.Size)
+	if err != nil {
+		log.Printf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
+		return nil, err
 	}
-	return &rep, nil
+
+	did, err := p.Duplicate(oid)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
+		oid, req.Md5, req.Domain, req.Size)
+
+	return &transfer.GetByMd5Rep{
+		Fid: did,
+	}, nil
 }
 
 // ExistByMd5 checks existentiality of a file.
 func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.ExistRep, error) {
 	log.Printf("ExistByMd5, Request: %s, %d, %d\n", req.Md5, req.Domain, req.Size)
 
-	// TODO(hanyh):
-
-	rep := transfer.ExistRep{
-		Result: true, // For test.
+	_, _, err := s.findByMd5(req.Md5, req.Domain, req.Size)
+	if err != nil {
+		log.Printf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
+		return nil, err
 	}
-	return &rep, nil
+
+	return &transfer.ExistRep{
+		Result: true,
+	}, nil
 }
 
 // Copy copies a file and returns its fid.
@@ -327,12 +454,62 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 	log.Printf("Copy, Request: %s, %d, %d, %d, %s\n", req.SrcFid, req.SrcDomain,
 		req.DstDomain, req.DstUid, req.DstBiz)
 
-	// TODO(hanyh):
+	if req.SrcDomain == req.DstDomain {
+		did, err := s.duplicate(req.SrcFid, req.DstDomain)
+		if err != nil {
+			return nil, err
+		}
 
-	rep := transfer.CopyRep{
-		Fid: fmt.Sprintf("%v--copy", req.SrcFid), // For test.
+		return &transfer.CopyRep{
+			Fid: did,
+		}, nil
 	}
-	return &rep, nil
+
+	// open source file.
+	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.SrcDomain)
+	if err != nil {
+		return nil, err
+	}
+
+	var m fileop.DFSFileHandler
+	if mh != nil {
+		m = *mh
+	}
+
+	_, rf, err := searchFile(req.SrcFid, req.SrcDomain, *nh, m)
+	if err != nil {
+		return nil, err
+	}
+	defer rf.Close()
+
+	// open destination file.
+	handler, err := s.selector.getDFSFileHandlerForWrite(req.DstDomain)
+	if err != nil {
+		return nil, err
+	}
+
+	wf, err := (*handler).Create(&transfer.FileInfo{
+		Domain: req.DstDomain,
+		User:   req.DstUid,
+		Biz:    req.DstBiz,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	defer wf.Close()
+
+	_, err = io.Copy(wf, rf)
+	if err != nil {
+		return nil, err
+	}
+
+	dstId := wf.GetFileInfo().Id
+	log.Printf("Succeeded to copy file %s to %s", req.SrcFid, dstId)
+
+	return &transfer.CopyRep{
+		Fid: dstId,
+	}, nil
 }
 
 func (s *DFSServer) registerSelf(lsnAddr string, name string) error {

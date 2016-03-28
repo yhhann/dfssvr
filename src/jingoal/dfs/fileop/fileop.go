@@ -42,8 +42,11 @@ type DFSFileHandler interface {
 	// Open opens a DFSFile for read
 	Open(id string, domain int64) (DFSFile, error)
 
+	// Duplicate duplicates an entry for a file.
+	Duplicate(oid string) (string, error)
+
 	// Remove deletes a file by its id.
-	Remove(id string, domain int64) error
+	Remove(id string, domain int64) (bool, error)
 
 	// Close releases resources the handler holds.
 	Close() error
@@ -61,4 +64,7 @@ type DFSFileHandler interface {
 
 	// IsHealthy checks whether shard is ok.
 	IsHealthy() bool
+
+	// FindByMd5 finds a file by its md5.
+	FindByMd5(md5 string, domain int64, size int64) (string, error)
 }
