@@ -2,6 +2,8 @@
 package metadata
 
 import (
+	"fmt"
+
 	"gopkg.in/mgo.v2/bson"
 )
 
@@ -47,4 +49,10 @@ type Event struct {
 	ThreadId    string        `bson:"threadId"`    // thread id
 	Description string        `bson:"description"` // description
 	Domain      int64         `bson:"domain"`      // domain
+}
+
+func (s *Shard) String() string {
+	return fmt.Sprintf("id: %s, Name: %s, Uri: %s, MP: %s, PV: %d, PD: %d, VH: %s, VN: %s, VB: %s, Type %d",
+		s.Id.Hex(), s.Name, s.Uri, s.MountPoint, s.PathVersion, s.PathDigit,
+		s.VolHost, s.VolName, s.VolBase, s.ShdType)
 }

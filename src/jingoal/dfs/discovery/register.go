@@ -5,6 +5,7 @@ import (
 	"log"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"jingoal/dfs/notice"
 	"jingoal/dfs/transfer"
@@ -37,14 +38,14 @@ type ZKDfsServerRegister struct {
 	observers  map[chan<- struct{}]string
 	notice     notice.Notice
 	rwmu       sync.RWMutex
-	registered bool
+	registered int32 // 1 for registered, 0 for not registered.
 }
 
 // Register registers a DfsServer.
 // If successed, other servers will be notified.
 func (r *ZKDfsServerRegister) Register(s *DfsServer) error {
-	if r.registered {
-		log.Printf("server %v has registerd", s)
+	if atomic.LoadInt32(&r.registered) == 1 {
+		log.Printf("Server %v has registerd already.", s)
 		return nil
 	}
 
@@ -61,7 +62,7 @@ func (r *ZKDfsServerRegister) Register(s *DfsServer) error {
 		for {
 			select {
 			case <-clearFlag:
-				r.clearDfsServerMap()
+				r.cleanDfsServerMap()
 
 			case <-sendFlag:
 				// r.observers is a map from key to channel.
@@ -75,29 +76,28 @@ func (r *ZKDfsServerRegister) Register(s *DfsServer) error {
 						ob <- struct{}{}
 					}
 				}()
-				log.Printf("send flag is set")
+				log.Printf("Succeeded to fire %d sendFlag.", len(r.observers))
 
 			case changedServer := <-data: // Get changed server and update serverMap.
 				server := new(DfsServer)
 				if err := json.Unmarshal(changedServer, server); err != nil {
-					log.Printf("json.Unmarshal error: %v", err)
+					log.Printf("Failed to unmarshal json, error: %v", err)
 					continue
 				}
-				log.Printf("add server %v", server)
 				r.putDfsServerToMap(server)
 
 			case err := <-errors:
-				log.Printf("notice routine error %v", err)
-				if r.registered {
-					r.registered = false
-				}
-				// TODO(hanyh): retry n times.
+				atomic.CompareAndSwapInt32(&r.registered, 1, 0)
+
+				// Something must be done.
+				log.Printf("Failed to do notice, routine exit. error: %v", err)
 				return
 			}
 		}
 	}()
 
-	r.registered = true
+	atomic.CompareAndSwapInt32(&r.registered, 0, 1)
+
 	return nil
 }
 
@@ -114,21 +114,18 @@ func (r *ZKDfsServerRegister) putDfsServerToMap(server *DfsServer) {
 	defer r.rwmu.Unlock()
 
 	r.serverMap[server.Id] = server
+	log.Printf("Succeeded to add server %s into server map", server.String())
 }
 
-// ClearDfsServerMap clears the map of DfsServer.
-func (r *ZKDfsServerRegister) clearDfsServerMap() {
+// CleanDfsServerMap cleans the map of DfsServer.
+func (r *ZKDfsServerRegister) cleanDfsServerMap() {
 	r.rwmu.Lock()
 	defer r.rwmu.Unlock()
 
 	initialSize := len(r.serverMap)
 	r.serverMap = make(map[string]*DfsServer, initialSize)
 
-	for k := range r.serverMap {
-		delete(r.serverMap, k)
-	}
-
-	log.Printf("DfsServerMap cleared")
+	log.Printf("Succeeded to clean DfsServerMap, %d", initialSize)
 }
 
 // AddObserver adds an observer for DfsServer node changed.

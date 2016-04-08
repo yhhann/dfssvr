@@ -118,7 +118,6 @@ func (h *GridFsHandler) Remove(id string, domain int64) (bool, error) {
 
 	if result {
 		//TODO:(hanyh) log this event for audit.
-		log.Printf("Succeeded to remove file: %s", id)
 	}
 
 	return result, nil

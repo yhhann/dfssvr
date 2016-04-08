@@ -178,7 +178,6 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, error) {
 
 	if result {
 		// TODO:(hanyh) log the remove event.
-		log.Printf("Succeeded to remove file: %s", id)
 		filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
 			return result, err

@@ -28,10 +28,13 @@ const (
 
 // DfsZK implements Notice interface.
 type DfsZK struct {
+	Addrs []string
+
 	*zk.Conn
 }
 
 func (k *DfsZK) connectZk(addrs []string, timeout time.Duration) error {
+	k.Addrs = addrs
 	thisConn, ch, err := zk.Connect(zk.FormatServers(addrs), timeout)
 	if err != nil {
 		return err
@@ -54,15 +57,14 @@ func (k *DfsZK) CloseZk() {
 
 func (k *DfsZK) checkConnectEvent(ch <-chan zk.Event, okChan chan<- struct{}) {
 	for ev := range ch {
-		log.Printf("%v", ev)
 		switch ev.Type {
 		case zk.EventSession:
 			switch ev.State {
 			case zk.StateConnecting:
 			case zk.StateConnected:
-				log.Printf("connected!")
+				log.Printf("Succeeded to connect to zk[%v].", k.Addrs)
 			case zk.StateHasSession:
-				log.Printf("got session!")
+				log.Printf("Succeeded to get session from zk[%v].", k.Addrs)
 				okChan <- struct{}{}
 			}
 		default:

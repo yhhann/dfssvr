@@ -48,6 +48,7 @@ type ShardHandler struct {
 }
 
 func (sh *ShardHandler) updateStatus(newStatus handlerStatus) {
+	// TODO(hanyh): monitor
 	if sh.status == statusOk && newStatus != statusOk {
 		sh.status = newStatus
 		sh.stopRecoveryRoutine()
@@ -85,6 +86,8 @@ func (sh *ShardHandler) Shutdown() error {
 
 // startHealthyCheckRoutine starts a routine for health check.
 func (sh *ShardHandler) startHealthyCheckRoutine() {
+	sh.hs.setShardHandler(sh.handler.Name(), sh)
+
 	// Starts a routine for health check every healthCheckInterval seconds.
 	go func() {
 		ticker := time.NewTicker(time.Duration(*healthCheckInterval) * time.Second)
@@ -124,6 +127,7 @@ Stop:
 				break Stop
 			}
 
+			// TODO(hanyh): copy duplilcation metadata.
 			if err := copyFile(sh.handler, sh.hs.degradeShardHandler.handler, recoveryInfo); err != nil {
 				log.Printf("Failed to recovery file %s, error: %v", recoveryInfo.Fid, err)
 				break
@@ -149,8 +153,6 @@ func NewShardHandler(handler fileop.DFSFileHandler, status handlerStatus, select
 		healthyCheckRoutineRunning: make(chan struct{}),
 	}
 
-	sh.hs.addRecovery(sh.handler.Name(), sh.recoveryChan)
-	sh.hs.setShardHandler(sh.handler.Name(), sh)
 	sh.startHealthyCheckRoutine()
 
 	return sh

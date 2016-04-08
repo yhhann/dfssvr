@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
+	"google.golang.org/grpc/peer"
 
 	"jingoal/dfs/discovery"
 	"jingoal/dfs/fileop"
@@ -42,10 +43,12 @@ type DFSServer struct {
 
 // GetDfsServers gets a list of DfsServer from server.
 func (s *DFSServer) GetDfsServers(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
-	observer := make(chan struct{}, 100)
-	s.register.AddObserver(observer, req.GetClient().String())
+	clientId := strings.Join([]string{req.GetClient().Id, getPeerAddressString(stream.Context())}, "/")
 
-	log.Printf("Client connected successfully, %v", req.GetClient().String())
+	observer := make(chan struct{}, 100)
+	s.register.AddObserver(observer, clientId)
+
+	log.Printf("Client connected successfully, client: %s", clientId)
 
 	ticker := time.NewTicker(time.Duration(*heartbeatInterval) * time.Second)
 outLoop:
@@ -65,7 +68,7 @@ outLoop:
 
 	ticker.Stop()
 	s.register.RemoveObserver(observer)
-	log.Printf("Client connection closed, %v", req.GetClient().String())
+	log.Printf("Client connection closed, client: %s", clientId)
 
 	return nil
 }
@@ -109,9 +112,10 @@ func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream dis
 		return err
 	}
 
-	log.Printf("Succeeded to send DfsServers to client: %s", req.GetClient().String())
-	for _, s := range ss {
-		log.Printf("DfsServer: %s", s)
+	clientId := strings.Join([]string{req.GetClient().Id, getPeerAddressString(stream.Context())}, "/")
+	log.Printf("Succeeded to send DfsServers to client: %s, Servers:", clientId)
+	for i, s := range ss {
+		log.Printf("%d. DfsServer: %s\n", i, strings.Join([]string{s.Id, s.Uri, s.Status.String()}, "/"))
 	}
 
 	return nil
@@ -153,22 +157,23 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 			elapse := time.Now().Sub(startTime).Seconds()
 			if reqInfo != nil {
 				// TODO(hanyh): save a event for create file ok.
-				log.Printf("recv and save file ok, %s, elapse %f\n", reqInfo, elapse)
+				log.Printf("Succeeded to save file: %s, elapse %f\n", reqInfo, elapse)
 			} else {
 				// TODO(hanyh): save a event for create file error.
-				log.Println("recv error: no file info")
+				log.Println("Failed to save file: no file info")
 				errStr = "no file info"
 			}
 
 			return finishRecv(file.GetFileInfo(), errStr, stream)
 		}
 		if err != nil {
-			log.Printf("recv error, file: %s, error: %v\n", reqInfo, err)
+			log.Println("Failed to save file: %s, error: %v\n", reqInfo, err)
 			return err
 		}
 
 		if reqInfo == nil {
 			reqInfo = req.GetInfo()
+			log.Printf("PutFile: file info: %v, client: %s", reqInfo, getPeerAddressString(stream.Context()))
 			if reqInfo == nil {
 				log.Printf("recv error: no file info")
 				return errors.New("recv error: no file info")
@@ -217,9 +222,11 @@ func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFS
 
 // GetFile gets a file from server.
 func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransfer_GetFileServer) error {
+	log.Printf("GetFile: file info: %v, client: %s", req, getPeerAddressString(stream.Context()))
+
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
 	if err != nil {
-		log.Printf("get handler for read error: %v", err)
+		log.Printf("Failed to get handler for read, error: %v", err)
 		return err
 	}
 
@@ -239,15 +246,15 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 	for {
 		length, err := file.Read(b)
 		if err == io.EOF {
-			log.Printf("read file ok, %s, length %d", req.Id, off)
+			log.Printf("Succeeded to read file, %s, length %d", req.Id, off)
 			return nil
 		}
 		if err != nil {
-			log.Printf("read file error, %s, error: %v", req.Id, err)
+			log.Printf("Failed to read file, %s, error: %v", req.Id, err)
 			return err
 		}
 		if length == 0 {
-			log.Printf("read file ok, %s, length %d", req.Id, off)
+			log.Printf("Succeeded to read file, %s, length %d", req.Id, off)
 			return nil
 		}
 
@@ -267,7 +274,8 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 
 // Remove deletes a file.
 func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq) (*transfer.RemoveFileRep, error) {
-	log.Printf("RemoveFile, Request: %v %s %d\n", req.GetDesc().Desc, req.Id, req.Domain)
+	log.Printf("RemoveFile, file id: %s, domain: %d, client: %s, call stack:\n%v", req.Id, req.Domain,
+		getPeerAddressString(ctx), req.GetDesc().Desc)
 	// TODO(hanyh): log the remove command for audit.
 
 	rep := &transfer.RemoveFileRep{}
@@ -275,7 +283,7 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
 	if err != nil {
-		log.Printf("get handler for read error: %v", err)
+		log.Printf("Failed to get handler for read, error: %v", err)
 		return rep, err
 	}
 
@@ -329,7 +337,8 @@ func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {
 
 // Duplicate duplicates a file, returns a new fid.
 func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (*transfer.DuplicateRep, error) {
-	log.Printf("Duplicate, Request: %s, %d\n", req.Id, req.Domain)
+	log.Printf("Duplicate, file id: %s, domain: %d, client: %s", req.Id, req.Domain,
+		getPeerAddressString(ctx))
 
 	did, err := s.duplicate(req.Id, req.Domain)
 	if err != nil {
@@ -367,7 +376,8 @@ func (s *DFSServer) exist(id string, domain int64) (bool, error) {
 
 // Exist checks existentiality of a file.
 func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (*transfer.ExistRep, error) {
-	log.Printf("Exist, Request: %s, %d\n", req.Id, req.Domain)
+	log.Printf("Exist, file id: %s, domain: %d, client: %s", req.Id, req.Domain,
+		getPeerAddressString(ctx))
 
 	result, err := s.exist(req.Id, req.Domain)
 
@@ -380,7 +390,7 @@ func (s *DFSServer) findByMd5(md5 string, domain int64, size int64) (fileop.DFSF
 	var err error
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
 	if err != nil {
-		log.Printf("get handler for read error: %v", err)
+		log.Printf("Failed to get handler for read, error: %v", err)
 		return nil, "", err
 	}
 
@@ -414,7 +424,8 @@ func (s *DFSServer) findByMd5(md5 string, domain int64, size int64) (fileop.DFSF
 
 // GetByMd5 gets a file by its md5.
 func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.GetByMd5Rep, error) {
-	log.Printf("GetByMd5, Request: %s, %d, %d\n", req.Md5, req.Domain, req.Size)
+	log.Printf("GetByMd5, MD5: %s, domain: %d, size: %d, client: %s", req.Md5, req.Domain, req.Size,
+		getPeerAddressString(ctx))
 
 	p, oid, err := s.findByMd5(req.Md5, req.Domain, req.Size)
 	if err != nil {
@@ -436,7 +447,8 @@ func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*t
 
 // ExistByMd5 checks existentiality of a file.
 func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.ExistRep, error) {
-	log.Printf("ExistByMd5, Request: %s, %d, %d\n", req.Md5, req.Domain, req.Size)
+	log.Printf("ExistByMd5, MD5: %s, domain: %d, size: %d, client: %s", req.Md5, req.Domain, req.Size,
+		getPeerAddressString(ctx))
 
 	_, _, err := s.findByMd5(req.Md5, req.Domain, req.Size)
 	if err != nil {
@@ -451,8 +463,8 @@ func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (
 
 // Copy copies a file and returns its fid.
 func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.CopyRep, error) {
-	log.Printf("Copy, Request: %s, %d, %d, %d, %s\n", req.SrcFid, req.SrcDomain,
-		req.DstDomain, req.DstUid, req.DstBiz)
+	log.Printf("Copy, srcId: %s, srcDomain: %d, dstDomain: %d, dstUid: %d, dstBiz: %s, client: %s\n",
+		req.SrcFid, req.SrcDomain, req.DstDomain, req.DstUid, req.DstBiz, getPeerAddressString(ctx))
 
 	if req.SrcDomain == req.DstDomain {
 		did, err := s.duplicate(req.SrcFid, req.DstDomain)
@@ -637,4 +649,12 @@ func sanitizeChunkSize(size int64) int64 {
 		return MaxChunkSize
 	}
 	return size
+}
+
+func getPeerAddressString(ctx context.Context) (peerAddr string) {
+	if per, ok := peer.FromContext(ctx); ok {
+		peerAddr = per.Addr.String()
+	}
+
+	return
 }
