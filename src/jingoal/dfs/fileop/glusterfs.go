@@ -169,22 +169,36 @@ func (h *GlusterHandler) Find(id string) (string, error) {
 }
 
 // Remove deletes file by its id and domain.
-func (h *GlusterHandler) Remove(id string, domain int64) (bool, error) {
+func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
+	f, err := h.duplfs.Find(id)
+	if err != nil {
+		return false, nil, err
+	}
+	defer f.Close()
+
+	query := bson.D{
+		{"_id", f.Id()},
+	}
+	m, err := LookupFileMeta(h.duplfs.gridfs, query)
+	if err != nil {
+		return false, nil, err
+	}
+
 	result, err := h.duplfs.Delete(id)
 	if err != nil {
 		log.Printf("Failed to remove file: %s, error: %v", id, err)
-		return false, err
+		return false, nil, err
 	}
 
 	if result {
 		// TODO:(hanyh) log the remove event.
 		filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
-			return result, err
+			return result, nil, err
 		}
 	}
 
-	return result, nil
+	return result, m, nil
 }
 
 func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
@@ -341,7 +355,7 @@ func (f GlusterFile) updateMetadata() error {
 		"userid", fmt.Sprintf("%d", f.info.User),
 	})
 	opdata = append(opdata, bson.DocElem{
-		"bizname", "dfs", // For compatible with dfs 1.0
+		"bizname", f.info.Biz, // For compatible with dfs 1.0
 	})
 	opdata = append(opdata, bson.DocElem{
 		"contentType", nil, // For compatible with dfs 1.0

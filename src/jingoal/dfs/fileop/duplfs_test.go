@@ -13,7 +13,7 @@ import (
 
 var (
 	dbUri  = "mongodb://192.168.55.193:27017/"
-	dbName = "dupl-test"
+	dbName = "gridfs1"
 )
 
 func prepareDuplFs() (*DuplFs, error) {
@@ -146,10 +146,18 @@ func TestFindByMd5(t *testing.T) {
 		t.Errorf("prepare DuplFs error: %v", err)
 	}
 
-	f, err := duplfs.FindByMd5("6ea093b7e26047e9dab7d4b5e134e075", 5, 1858)
+	f, err := duplfs.FindByMd5("08c93d421c5c71fc38be66825f77d700", 5, 1858)
 	if err != nil {
 		t.Errorf("Find by md5 error: %v", err)
 	}
 
-	log.Printf("%+v", f)
+	query := bson.D{
+		{"_id", f.Id()},
+	}
+	fm, err := LookupFileMeta(duplfs.gridfs, query)
+	if err != nil {
+		t.Errorf("Lookup file metadata error: %v", err)
+	}
+
+	log.Printf("%d, %s, %d, %s, %s", fm.Length, fm.MD5, fm.Domain, fm.UserId, fm.Biz)
 }

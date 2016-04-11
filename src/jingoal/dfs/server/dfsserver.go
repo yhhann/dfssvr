@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/peer"
+	"gopkg.in/mgo.v2/bson"
 
 	"jingoal/dfs/discovery"
 	"jingoal/dfs/fileop"
@@ -35,6 +36,7 @@ const (
 // DFSServer implements DiscoveryServiceServer and FileTransferServer.
 type DFSServer struct {
 	mOp      metadata.MetaOp
+	spaceOp  *metadata.SpaceLogOp
 	reOp     *recovery.RecoveryEventOp
 	register discovery.Register
 	notice   notice.Notice
@@ -148,7 +150,9 @@ func finishRecv(info *transfer.FileInfo, errStr string, stream transfer.FileTran
 func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 	var reqInfo *transfer.FileInfo
 	var file fileop.DFSFile
+	var length int
 
+	csize := 0
 	startTime := time.Now()
 	for {
 		req, err := stream.Recv()
@@ -156,8 +160,20 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 			var errStr string
 			elapse := time.Now().Sub(startTime).Seconds()
 			if reqInfo != nil {
+				inf := file.GetFileInfo()
+				slog := &metadata.SpaceLog{
+					Domain:    inf.Domain,
+					Uid:       fmt.Sprintf("%d", inf.User),
+					Fid:       inf.Id,
+					Biz:       inf.Biz,
+					Size:      int64(length),
+					Timestamp: time.Now(),
+					Type:      metadata.CreateType.String(),
+				}
+				s.spaceOp.SaveSpaceLog(slog)
+
 				// TODO(hanyh): save a event for create file ok.
-				log.Printf("Succeeded to save file: %s, elapse %f\n", reqInfo, elapse)
+				log.Printf("Succeeded to save file: %s, length %d, elapse %f\n", inf, length, elapse)
 			} else {
 				// TODO(hanyh): save a event for create file error.
 				log.Println("Failed to save file: no file info")
@@ -194,10 +210,12 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 			defer file.Close()
 		}
 
-		_, err = file.Write(req.GetChunk().Payload[:])
+		csize, err = file.Write(req.GetChunk().Payload[:])
 		if err != nil {
 			return err
 		}
+
+		length += csize
 	}
 }
 
@@ -279,7 +297,10 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 	// TODO(hanyh): log the remove command for audit.
 
 	rep := &transfer.RemoveFileRep{}
+	result := false
+
 	var p fileop.DFSFileHandler
+	var fm *fileop.FileMeta
 
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
 	if err != nil {
@@ -289,7 +310,7 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 
 	if nh != nil {
 		p = *nh
-		rep.Result, err = p.Remove(req.Id, req.Domain)
+		result, fm, err = p.Remove(req.Id, req.Domain)
 		if err != nil {
 			log.Printf("Failed to remove file %s from %v", req.Id, p.Name())
 		}
@@ -297,15 +318,38 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 
 	if mh != nil {
 		p = *mh
-		rep.Result, err = p.Remove(req.Id, req.Domain)
+		result, fm, err = p.Remove(req.Id, req.Domain)
 		if err != nil {
 			log.Printf("Failed to remove file %s from %v", req.Id, p.Name())
 		}
 	}
 
+	if result {
+		log.Printf("Succeeded to remove entity %s from %v.", req.Id, p.Name())
+	} else {
+		log.Printf("Succeeded to remove reference %s from %v", req.Id, p.Name())
+	}
 	// TODO(hanyh): log the remove result for audit.
-	log.Printf("Succeeded to remove file %s from %v", req.Id, p.Name())
 
+	// space log.
+	if result {
+		fid, ok := fm.Id.(bson.ObjectId)
+		if !ok {
+			log.Printf("Failed to convert file to string, %T", fm.Id)
+		}
+		slog := &metadata.SpaceLog{
+			Domain:    fm.Domain,
+			Uid:       fm.UserId,
+			Fid:       fid.Hex(),
+			Biz:       fm.Biz,
+			Size:      fm.Length,
+			Timestamp: time.Now(),
+			Type:      metadata.DeleteType.String(),
+		}
+		s.spaceOp.SaveSpaceLog(slog)
+	}
+
+	rep.Result = result
 	return rep, nil
 }
 
@@ -351,10 +395,16 @@ func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (
 	}, nil
 }
 
-func (s *DFSServer) exist(id string, domain int64) (bool, error) {
+func (s *DFSServer) exist(id string, domain int64) (result bool, err error) {
+	defer func() {
+		if err == fileop.FileNotFound {
+			result, err = false, nil
+		}
+	}()
+
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
 	if err != nil {
-		return false, err
+		return
 	}
 
 	var m fileop.DFSFileHandler
@@ -364,14 +414,15 @@ func (s *DFSServer) exist(id string, domain int64) (bool, error) {
 
 	_, file, err := searchFile(id, domain, *nh, m)
 	if err != nil {
-		return false, err
+		return
 	}
 	if file == nil {
-		return false, nil
+		return
 	}
 
 	file.Close()
-	return true, nil
+	result, err = true, nil
+	return
 }
 
 // Exist checks existentiality of a file.
@@ -380,6 +431,9 @@ func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (*transfe
 		getPeerAddressString(ctx))
 
 	result, err := s.exist(req.Id, req.Domain)
+	if err != nil {
+		log.Printf("Failed to exist %s, %d", req.Id, req.Domain)
+	}
 
 	return &transfer.ExistRep{
 		Result: result,
@@ -472,6 +526,9 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 			return nil, err
 		}
 
+		log.Printf("Copy is converted to duplicate, srcId: %s, srcDomain: %d, dstDomain: %d",
+			req.SrcFid, req.SrcDomain, req.DstDomain)
+
 		return &transfer.CopyRep{
 			Fid: did,
 		}, nil
@@ -511,23 +568,35 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 
 	defer wf.Close()
 
-	_, err = io.Copy(wf, rf)
+	length, err := io.Copy(wf, rf)
 	if err != nil {
 		return nil, err
 	}
 
-	dstId := wf.GetFileInfo().Id
-	log.Printf("Succeeded to copy file %s to %s", req.SrcFid, dstId)
+	inf := wf.GetFileInfo()
+	log.Printf("Succeeded to copy file %s to %s", req.SrcFid, inf.Id)
+
+	// space log.
+	slog := &metadata.SpaceLog{
+		Domain:    inf.Domain,
+		Uid:       fmt.Sprintf("%d", inf.User),
+		Fid:       inf.Id,
+		Biz:       inf.Biz,
+		Size:      length,
+		Timestamp: time.Now(),
+		Type:      metadata.CreateType.String(),
+	}
+	s.spaceOp.SaveSpaceLog(slog)
 
 	return &transfer.CopyRep{
-		Fid: dstId,
+		Fid: inf.Id,
 	}, nil
 }
 
 func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 	log.Printf("Start to register self[%s,%s]", name, lsnAddr)
 
-	rAddr, err := s.sanitizeLsnAddr(lsnAddr)
+	rAddr, err := sanitizeLsnAddr(lsnAddr)
 	if err != nil {
 		return err
 	}
@@ -542,57 +611,6 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 
 	log.Printf("Succeeded to register self[%s,%s] on %s ok", name, rAddr, transfer.NodeName)
 	return nil
-}
-
-func (s *DFSServer) sanitizeLsnAddr(lsnAddr string) (string, error) {
-	ss := strings.Split(lsnAddr, ":")
-
-	lstPort := "10000"
-	if len(ss) > 1 {
-		lstPort = ss[len(ss)-1]
-	}
-
-	var registerIp string
-	ip := net.ParseIP(ss[0])
-	if ip != nil && ip.To4() != nil {
-		registerIp = ss[0]
-	}
-
-	if registerIp == "" {
-		lstIps, err := s.getIfcAddr()
-		if err != nil {
-			return "", err
-		}
-		if len(lstIps) == 0 {
-			return "", fmt.Errorf("no interface address, use loopback")
-		}
-		registerIp = lstIps[0]
-	}
-
-	return fmt.Sprintf("%s:%s", registerIp, lstPort), nil
-}
-
-func (s *DFSServer) getIfcAddr() ([]string, error) {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return nil, err
-	}
-
-	ifaddrs := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		if ipnet, ok := a.(*net.IPNet); ok {
-			ip := ipnet.IP
-			if !ip.IsLoopback() && ip.To4() != nil {
-				ifaddrs = append(ifaddrs, ip.String())
-			}
-		}
-	}
-
-	if len(addrs) == 0 {
-		return nil, fmt.Errorf("get addr error")
-	}
-
-	return ifaddrs, nil
 }
 
 // NewDFSServer creates a DFSServer
@@ -610,6 +628,12 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 		register: r,
 		notice:   zk,
 	}
+
+	spaceOp, err := metadata.NewSpaceLogOp(dbName, uri)
+	if err != nil {
+		return nil, err
+	}
+	server.spaceOp = spaceOp
 
 	// Create NewMongoMetaOp
 	mop, err := metadata.NewMongoMetaOp(dbName, uri)
@@ -641,6 +665,65 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	return &server, nil
 }
 
+func getPeerAddressString(ctx context.Context) (peerAddr string) {
+	if per, ok := peer.FromContext(ctx); ok {
+		peerAddr = per.Addr.String()
+	}
+
+	return
+}
+
+func getIfcAddr() ([]string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, err
+	}
+
+	ifaddrs := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok {
+			ip := ipnet.IP
+			if !ip.IsLoopback() && ip.To4() != nil {
+				ifaddrs = append(ifaddrs, ip.String())
+			}
+		}
+	}
+
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("get addr error")
+	}
+
+	return ifaddrs, nil
+}
+
+func sanitizeLsnAddr(lsnAddr string) (string, error) {
+	ss := strings.Split(lsnAddr, ":")
+
+	lstPort := "10000"
+	if len(ss) > 1 {
+		lstPort = ss[len(ss)-1]
+	}
+
+	var registerIp string
+	ip := net.ParseIP(ss[0])
+	if ip != nil && ip.To4() != nil {
+		registerIp = ss[0]
+	}
+
+	if registerIp == "" {
+		lstIps, err := getIfcAddr()
+		if err != nil {
+			return "", err
+		}
+		if len(lstIps) == 0 {
+			return "", fmt.Errorf("no interface address, use loopback")
+		}
+		registerIp = lstIps[0]
+	}
+
+	return fmt.Sprintf("%s:%s", registerIp, lstPort), nil
+}
+
 func sanitizeChunkSize(size int64) int64 {
 	if size < MinChunkSize {
 		return MinChunkSize
@@ -649,12 +732,4 @@ func sanitizeChunkSize(size int64) int64 {
 		return MaxChunkSize
 	}
 	return size
-}
-
-func getPeerAddressString(ctx context.Context) (peerAddr string) {
-	if per, ok := peer.FromContext(ctx); ok {
-		peerAddr = per.Addr.String()
-	}
-
-	return
 }

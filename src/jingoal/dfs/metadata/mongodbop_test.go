@@ -9,13 +9,14 @@ import (
 )
 
 const (
-	dbUri = "mongodb://192.168.55.193:27017?maxPoolSize=30"
+	dbUri  = "mongodb://192.168.55.193:27017?maxPoolSize=30"
+	dbName = "shard"
 )
 
 func TestSegment(t *testing.T) {
 	c := Segment{Domain: 200, NormalServer: "shard1", MigrateServer: "shard200"}
 
-	sop, err := NewMongoMetaOp("shard", dbUri)
+	sop, err := NewMongoMetaOp(dbName, dbUri)
 	if err != nil {
 		t.Errorf("init chunk col error: %v\n", err)
 	}
@@ -40,7 +41,7 @@ func TestSegment(t *testing.T) {
 }
 
 func TestFindAllSegmentsOrderByDomain(t *testing.T) {
-	sop, err := NewMongoMetaOp("shard", dbUri)
+	sop, err := NewMongoMetaOp(dbName, dbUri)
 	if err != nil {
 		t.Errorf("init chunk col error: %v\n", err)
 	}
@@ -52,7 +53,7 @@ func TestFindAllSegmentsOrderByDomain(t *testing.T) {
 }
 
 func TestShard(t *testing.T) {
-	sop, err := NewMongoMetaOp("shard", dbUri)
+	sop, err := NewMongoMetaOp(dbName, dbUri)
 	if err != nil {
 		t.Errorf("init server col error: %v\n", err)
 	}
@@ -69,7 +70,7 @@ func TestShard(t *testing.T) {
 }
 
 func TestFindAllShards(t *testing.T) {
-	sop, err := NewMongoMetaOp("shard", dbUri)
+	sop, err := NewMongoMetaOp(dbName, dbUri)
 	if err != nil {
 		t.Errorf("init server col error: %v\n", err)
 	}
@@ -93,7 +94,7 @@ func TestFindAllShards(t *testing.T) {
 }
 
 func TestEvent(t *testing.T) {
-	sop, err := NewMongoMetaOp("shard", dbUri)
+	sop, err := NewMongoMetaOp(dbName, dbUri)
 	if err != nil {
 		t.Errorf("init event col error %v\n", err)
 	}
@@ -118,7 +119,7 @@ func TestEvent(t *testing.T) {
 
 func TestGetEvents(t *testing.T) {
 	fid := fmt.Sprintf("%x", string(bson.NewObjectId()))
-	sop, err := NewMongoMetaOp("shard", dbUri)
+	sop, err := NewMongoMetaOp(dbName, dbUri)
 	if err != nil {
 		t.Errorf("NewMongoMetaOp() error %v\n", err)
 	}

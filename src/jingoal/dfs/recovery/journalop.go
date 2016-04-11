@@ -23,10 +23,7 @@ type RecoveryEventOp struct {
 }
 
 func (op *RecoveryEventOp) execute(target func(session *mgo.Session) error) error {
-	localSession := op.session.Copy()
-	defer localSession.Close()
-
-	return target(localSession)
+	return metadata.Execute(op.session, target)
 }
 
 // SaveEvent saves a degradation event.

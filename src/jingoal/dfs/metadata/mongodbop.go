@@ -31,10 +31,7 @@ type MongoMetaOp struct {
 }
 
 func (op *MongoMetaOp) execute(target func(session *mgo.Session) error) error {
-	localSession := op.session.Copy()
-	defer localSession.Close()
-
-	return target(localSession)
+	return Execute(op.session, target)
 }
 
 // SaveSegment saves a Segment object into "chunks" collection.
@@ -226,4 +223,11 @@ func OpenMongoSession(uri string) (*mgo.Session, error) {
 	}
 
 	return session, nil
+}
+
+func Execute(session *mgo.Session, target func(*mgo.Session) error) error {
+	s := session.Copy()
+	defer s.Close()
+
+	return target(s)
 }

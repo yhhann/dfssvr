@@ -38,10 +38,7 @@ type DuplicateOp struct {
 }
 
 func (d *DuplicateOp) execute(target func(session *mgo.Session) error) error {
-	localSession := d.session.Copy()
-	defer localSession.Close()
-
-	return target(localSession)
+	return Execute(d.session, target)
 }
 
 // SaveDupl saves a dupl.

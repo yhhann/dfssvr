@@ -109,18 +109,28 @@ func (h *GridFsHandler) Find(id string) (string, error) {
 }
 
 // Remove deletes a file with its id and domain.
-func (h *GridFsHandler) Remove(id string, domain int64) (bool, error) {
+func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
+	f, err := h.duplfs.Find(id)
+	if err != nil {
+		return false, nil, err
+	}
+	defer f.Close()
+
+	query := bson.D{
+		{"_id", f.Id()},
+	}
+	m, err := LookupFileMeta(h.duplfs.gridfs, query)
+	if err != nil {
+		return false, nil, err
+	}
+
 	result, err := h.duplfs.Delete(id)
 	if err != nil {
 		log.Printf("Failed to remove file: %s, error: %v", id, err)
-		return false, err
+		return false, nil, err
 	}
 
-	if result {
-		//TODO:(hanyh) log this event for audit.
-	}
-
-	return result, nil
+	return result, m, nil
 }
 
 // Close releases resources the handler holds.
@@ -214,7 +224,7 @@ func (f GridFsFile) updateGridMetadata() error {
 		"userid", fmt.Sprintf("%d", f.info.User),
 	})
 	opdata = append(opdata, bson.DocElem{
-		"bizname", "dfs", // For compatible with dfs 1.0
+		"bizname", f.info.Biz, // For compatible with dfs 1.0
 	})
 	opdata = append(opdata, bson.DocElem{
 		"contentType", nil, // For compatible with dfs 1.0

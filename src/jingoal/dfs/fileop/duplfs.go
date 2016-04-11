@@ -43,32 +43,43 @@ func (duplfs *DuplFs) FindByMd5(md5 string, domain int64, size int64) (*mgo.Grid
 }
 
 // Find finds a file with given id.
-func (duplfs *DuplFs) Find(givenId string) (*mgo.GridFile, error) {
+func (duplfs *DuplFs) Find(givenId string) (f *mgo.GridFile, err error) {
+	defer func() {
+		if err == mgo.ErrNotFound {
+			err = FileNotFound
+		}
+	}()
+
 	realId, err := hexString2ObjectId(util.GetRealId(givenId))
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	dupl, err := duplfs.op.LookupDuplById(*realId)
 	if err != nil {
-		log.Printf("dupl not found: %s", givenId)
-		return nil, err
+		log.Printf("dupl not found: %s, error: %v", givenId, err)
+		return
 	}
 	if dupl != nil {
-		return duplfs.gridfs.OpenId(dupl.Ref)
+		f, err = duplfs.gridfs.OpenId(dupl.Ref)
+		return
 	}
 
 	if !util.IsDuplId(givenId) {
-		ref, err := duplfs.op.LookupRefById(*realId)
+		var ref *metadata.Ref
+		ref, err = duplfs.op.LookupRefById(*realId)
 		if err != nil {
-			return nil, err
+			log.Printf("ref not found: %s, error: %v", givenId, err)
+			return
 		}
 		if ref == nil {
-			return duplfs.gridfs.OpenId(*realId)
+			f, err = duplfs.gridfs.OpenId(*realId)
+			return
 		}
 	}
 
-	return nil, FileNotFound
+	err = FileNotFound
+	return
 }
 
 func (duplfs *DuplFs) search(fid string) (*mgo.GridFile, error) {
@@ -242,6 +253,32 @@ func NewDuplFs(gridfs *mgo.GridFS, dOp *metadata.DuplicateOp) *DuplFs {
 	}
 
 	return duplfs
+}
+
+type FileMeta struct {
+	Id          interface{} "_id"
+	ChunkSize   int         "chunkSize"
+	UploadDate  time.Time   "uploadDate"
+	Length      int64       "length,minsize"
+	MD5         string      "md5"
+	Filename    string      "filename,omitempty"
+	ContentType string      "contentType,omitempty"
+
+	Domain int64  "domain"
+	UserId string "userid"
+	Biz    string "bizname"
+}
+
+func LookupFileMeta(gridfs *mgo.GridFS, query bson.D) (*FileMeta, error) {
+	iter := gridfs.Find(query).Sort("-uploadDate").Iter()
+	defer iter.Close()
+
+	fm := new(FileMeta)
+	if iter.Next(fm) {
+		return fm, nil
+	}
+
+	return nil, FileNotFound
 }
 
 func hexString2ObjectId(hex string) (*bson.ObjectId, error) {

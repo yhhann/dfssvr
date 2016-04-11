@@ -46,7 +46,7 @@ type DFSFileHandler interface {
 	Duplicate(oid string) (string, error)
 
 	// Remove deletes a file by its id.
-	Remove(id string, domain int64) (bool, error)
+	Remove(id string, domain int64) (bool, *FileMeta, error)
 
 	// Close releases resources the handler holds.
 	Close() error

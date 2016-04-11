@@ -57,7 +57,7 @@ func (h *DegradeHandler) Find(fid string) (string, error) {
 }
 
 // Remove deletes a file with its id and domain.
-func (h *DegradeHandler) Remove(id string, domain int64) (bool, error) {
+func (h *DegradeHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
 	return h.fh.Remove(id, domain)
 }
 
