@@ -21,11 +21,13 @@ import (
 	"jingoal/dfs/notice"
 	"jingoal/dfs/recovery"
 	"jingoal/dfs/transfer"
+	"jingoal/dfs/util"
 )
 
 var (
 	logDir            = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
 	heartbeatInterval = flag.Int("hb-interval", 5, "time interval in seconds of heart beat")
+	DebugMode         = flag.Bool("debug-mode", false, "debug mode")
 )
 
 const (
@@ -37,6 +39,7 @@ const (
 type DFSServer struct {
 	mOp      metadata.MetaOp
 	spaceOp  *metadata.SpaceLogOp
+	eventOp  *metadata.EventOp
 	reOp     *recovery.RecoveryEventOp
 	register discovery.Register
 	notice   notice.Notice
@@ -125,6 +128,20 @@ func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream dis
 
 // NegotiateChunkSize negotiates chunk size in bytes between client and server.
 func (s *DFSServer) NegotiateChunkSize(ctx context.Context, req *transfer.NegotiateChunkSizeReq) (*transfer.NegotiateChunkSizeRep, error) {
+
+	if *DebugMode {
+		// Emulate biz elapse.
+		time.Sleep(3 * time.Second)
+
+		if dl, ok := ctx.Deadline(); ok {
+			log.Printf("deadline %v", dl)
+			timeout := dl.Sub(time.Now())
+			if timeout <= 0 { // Timeout
+				return nil, context.DeadlineExceeded
+			}
+		}
+	}
+
 	return &transfer.NegotiateChunkSizeRep{
 		Size: sanitizeChunkSize(req.Size),
 	}, nil
@@ -151,9 +168,12 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 	var reqInfo *transfer.FileInfo
 	var file fileop.DFSFile
 	var length int
+	var handler *fileop.DFSFileHandler
 
 	csize := 0
 	startTime := time.Now()
+	peerAddr := getPeerAddressString(stream.Context())
+
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
@@ -172,7 +192,17 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 				}
 				s.spaceOp.SaveSpaceLog(slog)
 
-				// TODO(hanyh): save a event for create file ok.
+				// save a event for create file ok.
+				event := &metadata.Event{
+					EType:     metadata.SucCreate,
+					Timestamp: util.GetTimeInMilliSecond(),
+					Domain:    inf.Domain,
+					Fid:       inf.Id,
+					Elapse:    elapse,
+					Description: fmt.Sprintf("%s[PutFile], client: %s, dst: %s, size: %d",
+						metadata.SucCreate.String(), peerAddr, (*handler).Name(), length),
+				}
+				s.eventOp.SaveEvent(event)
 				log.Printf("Succeeded to save file: %s, length %d, elapse %f\n", inf, length, elapse)
 			} else {
 				// TODO(hanyh): save a event for create file error.
@@ -189,13 +219,13 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 
 		if reqInfo == nil {
 			reqInfo = req.GetInfo()
-			log.Printf("PutFile: file info: %v, client: %s", reqInfo, getPeerAddressString(stream.Context()))
+			log.Printf("PutFile: file info: %v, client: %s", reqInfo, peerAddr)
 			if reqInfo == nil {
 				log.Printf("recv error: no file info")
 				return errors.New("recv error: no file info")
 			}
 
-			handler, err := s.selector.getDFSFileHandlerForWrite(reqInfo.Domain)
+			handler, err = s.selector.getDFSFileHandlerForWrite(reqInfo.Domain)
 			if err != nil {
 				log.Printf("get handler for write error: %v", err)
 				return err
@@ -240,7 +270,9 @@ func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFS
 
 // GetFile gets a file from server.
 func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransfer_GetFileServer) error {
-	log.Printf("GetFile: file info: %v, client: %s", req, getPeerAddressString(stream.Context()))
+	peerAddr := getPeerAddressString(stream.Context())
+
+	log.Printf("GetFile: file info: %v, client: %s", req, peerAddr)
 
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
 	if err != nil {
@@ -255,6 +287,16 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 
 	_, file, err := searchFile(req.Id, req.Domain, *nh, m)
 	if err != nil {
+		if err == fileop.FileNotFound {
+			event := &metadata.Event{
+				EType:       metadata.FailRead,
+				Timestamp:   util.GetTimeInMilliSecond(),
+				Domain:      req.Domain,
+				Fid:         req.Id,
+				Description: fmt.Sprintf("%s, client %s", metadata.FailRead.String(), peerAddr),
+			}
+			s.eventOp.SaveEvent(event)
+		}
 		return err
 	}
 	defer file.Close()
@@ -292,9 +334,24 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 
 // Remove deletes a file.
 func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq) (*transfer.RemoveFileRep, error) {
+	peerAddr := getPeerAddressString(ctx)
+
 	log.Printf("RemoveFile, file id: %s, domain: %d, client: %s, call stack:\n%v", req.Id, req.Domain,
-		getPeerAddressString(ctx), req.GetDesc().Desc)
-	// TODO(hanyh): log the remove command for audit.
+		peerAddr, req.GetDesc().Desc)
+
+	startTime := time.Now()
+
+	// log the remove command for audit.
+	event := &metadata.Event{
+		EType:     metadata.CommandDelete,
+		Timestamp: util.GetTimeInMilliSecond(),
+		Domain:    req.Domain,
+		Fid:       req.Id,
+		Elapse:    -1.0,
+		Description: fmt.Sprintf("%s, client %s\n%s", metadata.CommandDelete.String(),
+			peerAddr, req.GetDesc().Desc),
+	}
+	s.eventOp.SaveEvent(event)
 
 	rep := &transfer.RemoveFileRep{}
 	result := false
@@ -324,13 +381,6 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 		}
 	}
 
-	if result {
-		log.Printf("Succeeded to remove entity %s from %v.", req.Id, p.Name())
-	} else {
-		log.Printf("Succeeded to remove reference %s from %v", req.Id, p.Name())
-	}
-	// TODO(hanyh): log the remove result for audit.
-
 	// space log.
 	if result {
 		fid, ok := fm.Id.(bson.ObjectId)
@@ -347,6 +397,24 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 			Type:      metadata.DeleteType.String(),
 		}
 		s.spaceOp.SaveSpaceLog(slog)
+	}
+
+	// log the remove result for audit.
+	resultEvent := &metadata.Event{
+		EType:     metadata.SucDelete,
+		Timestamp: util.GetTimeInMilliSecond(),
+		Domain:    req.Domain,
+		Fid:       req.Id,
+		Elapse:    time.Now().Sub(startTime).Seconds(),
+		Description: fmt.Sprintf("%s, client %s, command %s, result %t, from %v",
+			metadata.SucDelete.String(), peerAddr, event.Id.Hex(), result, p.Name()),
+	}
+	s.eventOp.SaveEvent(resultEvent)
+
+	if result {
+		log.Printf("Succeeded to remove entity %s from %v.", req.Id, p.Name())
+	} else {
+		log.Printf("Succeeded to remove reference %s from %v", req.Id, p.Name())
 	}
 
 	rep.Result = result
@@ -381,14 +449,35 @@ func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {
 
 // Duplicate duplicates a file, returns a new fid.
 func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (*transfer.DuplicateRep, error) {
-	log.Printf("Duplicate, file id: %s, domain: %d, client: %s", req.Id, req.Domain,
-		getPeerAddressString(ctx))
+	peerAddr := getPeerAddressString(ctx)
+	log.Printf("Duplicate, file id: %s, domain: %d, client: %s", req.Id, req.Domain, peerAddr)
+	startTime := time.Now()
 
 	did, err := s.duplicate(req.Id, req.Domain)
 	if err != nil {
+		event := &metadata.Event{
+			EType:       metadata.FailDupl,
+			Timestamp:   util.GetTimeInMilliSecond(),
+			Domain:      req.Domain,
+			Fid:         req.Id,
+			Description: fmt.Sprintf("%s, client %s", metadata.FailDupl.String(), peerAddr),
+			Elapse:      time.Now().Sub(startTime).Seconds(),
+		}
+		s.eventOp.SaveEvent(event)
+
 		log.Printf("Failed to duplicate %s[%d], error %v", req.Id, req.Domain, err)
 		return nil, err
 	}
+
+	event := &metadata.Event{
+		EType:       metadata.SucDupl,
+		Timestamp:   util.GetTimeInMilliSecond(),
+		Domain:      req.Domain,
+		Fid:         req.Id,
+		Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucDupl.String(), peerAddr, did),
+		Elapse:      time.Now().Sub(startTime).Seconds(),
+	}
+	s.eventOp.SaveEvent(event)
 
 	return &transfer.DuplicateRep{
 		Id: did,
@@ -478,8 +567,9 @@ func (s *DFSServer) findByMd5(md5 string, domain int64, size int64) (fileop.DFSF
 
 // GetByMd5 gets a file by its md5.
 func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.GetByMd5Rep, error) {
-	log.Printf("GetByMd5, MD5: %s, domain: %d, size: %d, client: %s", req.Md5, req.Domain, req.Size,
-		getPeerAddressString(ctx))
+	peerAddr := getPeerAddressString(ctx)
+	log.Printf("GetByMd5, MD5: %s, domain: %d, size: %d, client: %s",
+		req.Md5, req.Domain, req.Size, peerAddr)
 
 	p, oid, err := s.findByMd5(req.Md5, req.Domain, req.Size)
 	if err != nil {
@@ -489,8 +579,27 @@ func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*t
 
 	did, err := p.Duplicate(oid)
 	if err != nil {
+		event := &metadata.Event{
+			EType:       metadata.FailMd5,
+			Timestamp:   util.GetTimeInMilliSecond(),
+			Domain:      req.Domain,
+			Fid:         oid,
+			Description: fmt.Sprintf("%s, client %s", metadata.FailMd5.String(), peerAddr),
+		}
+		s.eventOp.SaveEvent(event)
+
 		return nil, err
 	}
+
+	event := &metadata.Event{
+		EType:       metadata.SucMd5,
+		Timestamp:   util.GetTimeInMilliSecond(),
+		Domain:      req.Domain,
+		Fid:         oid,
+		Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucMd5.String(), peerAddr, did),
+	}
+	s.eventOp.SaveEvent(event)
+
 	log.Printf("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
 		oid, req.Md5, req.Domain, req.Size)
 
@@ -517,8 +626,10 @@ func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (
 
 // Copy copies a file and returns its fid.
 func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.CopyRep, error) {
+	peerAddr := getPeerAddressString(ctx)
+
 	log.Printf("Copy, srcId: %s, srcDomain: %d, dstDomain: %d, dstUid: %d, dstBiz: %s, client: %s\n",
-		req.SrcFid, req.SrcDomain, req.DstDomain, req.DstUid, req.DstBiz, getPeerAddressString(ctx))
+		req.SrcFid, req.SrcDomain, req.DstDomain, req.DstUid, req.DstBiz, peerAddr)
 
 	if req.SrcDomain == req.DstDomain {
 		did, err := s.duplicate(req.SrcFid, req.DstDomain)
@@ -533,6 +644,8 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 			Fid: did,
 		}, nil
 	}
+
+	startTime := time.Now()
 
 	// open source file.
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.SrcDomain)
@@ -588,6 +701,17 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 	}
 	s.spaceOp.SaveSpaceLog(slog)
 
+	event := &metadata.Event{
+		EType:     metadata.SucCreate,
+		Timestamp: util.GetTimeInMilliSecond(),
+		Domain:    inf.Domain,
+		Fid:       inf.Id,
+		Elapse:    time.Now().Sub(startTime).Seconds(),
+		Description: fmt.Sprintf("%s[Copy], client: %s, srcFid: %s, dst: %s", metadata.SucCreate.String(),
+			peerAddr, req.SrcFid, (*handler).Name()),
+	}
+	s.eventOp.SaveEvent(event)
+
 	return &transfer.CopyRep{
 		Fid: inf.Id,
 	}, nil
@@ -634,6 +758,12 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 		return nil, err
 	}
 	server.spaceOp = spaceOp
+
+	eventOp, err := metadata.NewEventOp(dbName, uri)
+	if err != nil {
+		return nil, err
+	}
+	server.eventOp = eventOp
 
 	// Create NewMongoMetaOp
 	mop, err := metadata.NewMongoMetaOp(dbName, uri)

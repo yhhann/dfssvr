@@ -1,10 +1,5 @@
 package metadata
 
-import (
-	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
-)
-
 // MetaOp represents the operator of metadata.
 type MetaOp interface {
 	// Segment operators
@@ -35,18 +30,4 @@ type MetaOp interface {
 
 	// FindAllShards finds all shard servers.
 	FindAllShards() []*Shard
-
-	// Event operators
-
-	// SaveEvent saves an event.
-	SaveEvent(e *Event) error
-
-	// RemoveEvent removes an event by its id.
-	RemoveEvent(id bson.ObjectId) error
-
-	// LookupEventById finds an event by its id.
-	LookupEventById(id bson.ObjectId) (*Event, error)
-
-	// GetEvents gets an event iterator.
-	GetEvents(eventType string, threadId string, start int64, end int64) *mgo.Iter
 }

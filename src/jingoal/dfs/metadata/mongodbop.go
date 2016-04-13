@@ -3,7 +3,6 @@ package metadata
 import (
 	"errors"
 	"flag"
-	"strings"
 	"time"
 
 	"gopkg.in/mgo.v2"
@@ -13,7 +12,6 @@ import (
 const (
 	SEGMENT_COL = "chunks"  // segment collection name
 	SHARD_COL   = "servers" // shard collection name
-	EVENT_COL   = "event"   // event collection name
 )
 
 var (
@@ -136,58 +134,6 @@ func (op *MongoMetaOp) FindAllShards() []*Shard {
 	})
 
 	return result
-}
-
-// SaveEvent saves an event into database.
-// If id of the saved object is nil, it will be set to a new ObjectId.
-func (op *MongoMetaOp) SaveEvent(e *Event) error {
-	if string(e.Id) == "" {
-		e.Id = bson.NewObjectId()
-	}
-	if !e.Id.Valid() {
-		return ObjectIdInvalidError
-	}
-	return op.execute(func(session *mgo.Session) error {
-		return session.DB(op.dbName).C(EVENT_COL).Insert(*e)
-	})
-}
-
-// RemoveEvent removes an event by its id.
-func (op *MongoMetaOp) RemoveEvent(id bson.ObjectId) error {
-	return op.execute(func(session *mgo.Session) error {
-		return session.DB(op.dbName).C(EVENT_COL).RemoveId(id)
-	})
-}
-
-// LookupEventById finds an event by its id.
-func (op *MongoMetaOp) LookupEventById(id bson.ObjectId) (*Event, error) {
-	e := new(Event)
-	if err := op.execute(func(session *mgo.Session) error {
-		return session.DB(op.dbName).C(EVENT_COL).FindId(id).One(e)
-	}); err != nil {
-		return nil, err
-	}
-
-	return e, nil
-}
-
-// GetEvents gets an event iterator.
-func (op *MongoMetaOp) GetEvents(eventType string, threadId string, start int64, end int64) *mgo.Iter {
-	q := bson.M{"timeStamp": bson.M{"$gte": start, "$lte": end}, "eventType": eventType, "threadId": threadId}
-	if strings.TrimSpace(eventType) != "" {
-		q["eventType"] = eventType
-	}
-	if strings.TrimSpace(threadId) != "" {
-		q["threadId"] = threadId
-	}
-
-	var iter *mgo.Iter
-	op.execute(func(session *mgo.Session) error {
-		iter = session.DB(op.dbName).C(EVENT_COL).Find(q).Iter()
-		return nil
-	})
-
-	return iter
 }
 
 // NewMongoMetaOp creates a MongoMetaOp object with given mongodb uri
