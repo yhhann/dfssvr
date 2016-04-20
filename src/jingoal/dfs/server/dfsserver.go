@@ -27,7 +27,9 @@ import (
 var (
 	logDir            = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
 	heartbeatInterval = flag.Int("hb-interval", 5, "time interval in seconds of heart beat")
-	DebugMode         = flag.Bool("debug-mode", false, "debug mode")
+
+	DebugMode    = flag.Bool("debug-mode", false, "debug mode")
+	RegisterAddr = flag.String("register-addr", "", "register address")
 )
 
 const (
@@ -782,7 +784,12 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	log.Printf("Succeeded to initialize storage servers.")
 
 	// Register self.
-	if err := server.registerSelf(lsnAddr.String(), name); err != nil {
+	regAddr := *RegisterAddr
+	if regAddr == "" {
+		regAddr = lsnAddr.String()
+	}
+
+	if err := server.registerSelf(regAddr, name); err != nil {
 		return nil, err
 	}
 

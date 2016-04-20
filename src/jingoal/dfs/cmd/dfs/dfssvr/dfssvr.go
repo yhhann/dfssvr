@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/grpclog"
 
 	"jingoal/dfs/discovery"
 	"jingoal/dfs/server"
@@ -17,7 +16,7 @@ import (
 )
 
 var (
-	lsnAddr     = flag.String("server-addr", ":10000", "listen address")
+	lsnAddr     = flag.String("listen-addr", ":10000", "listen address")
 	name        = flag.String("server-name", "test-dfs-svr", "unique name")
 	zkAddr      = flag.String("zk-addr", "127.0.0.1:2181", "zookeeper address")
 	timeout     = flag.Int("zk-timeout", 15000, "zookeeper timeout")
@@ -89,12 +88,13 @@ func main() {
 
 	lis, err := net.Listen("tcp", *lsnAddr)
 	if err != nil {
-		grpclog.Fatalf("failed to listen %v", err)
+		log.Fatalf("failed to listen %v", err)
 	}
+	log.Printf("DFSServer listened on %s", lis.Addr().String())
 
 	cs, err := server.NewDFSServer(lis.Addr(), *name, *shardDbName, *shardDbUri, *zkAddr, *timeout)
 	if err != nil {
-		grpclog.Fatalf("create NewDFSServer failed%v", err)
+		log.Fatalf("create NewDFSServer failed%v", err)
 	}
 
 	grpcServer := grpc.NewServer()
