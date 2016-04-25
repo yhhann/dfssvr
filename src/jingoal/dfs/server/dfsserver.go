@@ -33,8 +33,8 @@ var (
 )
 
 const (
-	MaxChunkSize = 10240 // Max chunk size in bytes.
-	MinChunkSize = 1024  // Min chunk size in bytes.
+	MaxChunkSize = 1048576 // Max chunk size in bytes.
+	MinChunkSize = 1024    // Min chunk size in bytes.
 )
 
 // DFSServer implements DiscoveryServiceServer and FileTransferServer.
@@ -136,7 +136,7 @@ func (s *DFSServer) NegotiateChunkSize(ctx context.Context, req *transfer.Negoti
 		time.Sleep(3 * time.Second)
 
 		if dl, ok := ctx.Deadline(); ok {
-			log.Printf("deadline %v", dl)
+			log.Printf("deadline exceeded %v", dl)
 			timeout := dl.Sub(time.Now())
 			if timeout <= 0 { // Timeout
 				return nil, context.DeadlineExceeded
@@ -180,7 +180,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 		req, err := stream.Recv()
 		if err == io.EOF {
 			var errStr string
-			elapse := time.Now().Sub(startTime).Seconds()
+			elapse := time.Now().Sub(startTime).Nanoseconds()
 			if reqInfo != nil {
 				inf := file.GetFileInfo()
 				slog := &metadata.SpaceLog{
@@ -205,7 +205,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 						metadata.SucCreate.String(), peerAddr, (*handler).Name(), length),
 				}
 				s.eventOp.SaveEvent(event)
-				log.Printf("Succeeded to save file: %s, length %d, elapse %f\n", inf, length, elapse)
+				log.Printf("Succeeded to save file: %s, length %d, elapse %d\n", inf, length, elapse)
 			} else {
 				// TODO(hanyh): save a event for create file error.
 				log.Println("Failed to save file: no file info")
@@ -215,7 +215,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 			return finishRecv(file.GetFileInfo(), errStr, stream)
 		}
 		if err != nil {
-			log.Println("Failed to save file: %s, error: %v\n", reqInfo, err)
+			log.Printf("Failed to save file: %s, error: %v\n", reqInfo, err)
 			return err
 		}
 
@@ -349,7 +349,7 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 		Timestamp: util.GetTimeInMilliSecond(),
 		Domain:    req.Domain,
 		Fid:       req.Id,
-		Elapse:    -1.0,
+		Elapse:    -1,
 		Description: fmt.Sprintf("%s, client %s\n%s", metadata.CommandDelete.String(),
 			peerAddr, req.GetDesc().Desc),
 	}
@@ -407,7 +407,7 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 		Timestamp: util.GetTimeInMilliSecond(),
 		Domain:    req.Domain,
 		Fid:       req.Id,
-		Elapse:    time.Now().Sub(startTime).Seconds(),
+		Elapse:    time.Now().Sub(startTime).Nanoseconds(),
 		Description: fmt.Sprintf("%s, client %s, command %s, result %t, from %v",
 			metadata.SucDelete.String(), peerAddr, event.Id.Hex(), result, p.Name()),
 	}
@@ -463,7 +463,7 @@ func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (
 			Domain:      req.Domain,
 			Fid:         req.Id,
 			Description: fmt.Sprintf("%s, client %s", metadata.FailDupl.String(), peerAddr),
-			Elapse:      time.Now().Sub(startTime).Seconds(),
+			Elapse:      time.Now().Sub(startTime).Nanoseconds(),
 		}
 		s.eventOp.SaveEvent(event)
 
@@ -477,7 +477,7 @@ func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (
 		Domain:      req.Domain,
 		Fid:         req.Id,
 		Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucDupl.String(), peerAddr, did),
-		Elapse:      time.Now().Sub(startTime).Seconds(),
+		Elapse:      time.Now().Sub(startTime).Nanoseconds(),
 	}
 	s.eventOp.SaveEvent(event)
 
@@ -708,7 +708,7 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 		Timestamp: util.GetTimeInMilliSecond(),
 		Domain:    inf.Domain,
 		Fid:       inf.Id,
-		Elapse:    time.Now().Sub(startTime).Seconds(),
+		Elapse:    time.Now().Sub(startTime).Nanoseconds(),
 		Description: fmt.Sprintf("%s[Copy], client: %s, srcFid: %s, dst: %s", metadata.SucCreate.String(),
 			peerAddr, req.SrcFid, (*handler).Name()),
 	}

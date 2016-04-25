@@ -70,7 +70,7 @@ type Event struct {
 	Domain      int64         `bson:"domain"`              // domain
 	EType       EventType     `bson:"eType"`               // event type (dfs 2.0)
 	Fid         string        `bson:"fid"`                 // fid
-	Elapse      float64       `bson:"elapse,omitempty"`    // elapse in millisecond
+	Elapse      int64         `bson:"elapse,omitempty"`    // elapse in nanosecond
 }
 
 type EventOp struct {
