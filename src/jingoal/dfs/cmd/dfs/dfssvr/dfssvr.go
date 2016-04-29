@@ -23,6 +23,8 @@ var (
 	shardDbName = flag.String("shard-name", "shard", "shard database name")
 	shardDbUri  = flag.String("shard-dburi", "mongodb://127.0.0.1:27017", "shard database uri")
 	logDir      = flag.String("log-dir", "/var/log/dfs", "The log directory.")
+	compress    = flag.Bool("compress", true, "compressing transfer file")
+	concurrency = flag.Uint("concurrency", 0, "Concurrency")
 	version     = flag.Bool("v", false, "print version")
 
 	buildTime = ""
@@ -58,6 +60,9 @@ func checkFlags() {
 	if *shardDbUri == "" {
 		log.Println("Flag --shard-dburi is required.")
 		os.Exit(5)
+	}
+	if *concurrency < 0 {
+		*concurrency = 0
 	}
 }
 
@@ -97,7 +102,16 @@ func main() {
 		log.Fatalf("create NewDFSServer failed%v", err)
 	}
 
-	grpcServer := grpc.NewServer()
+	sopts := []grpc.ServerOption{
+		grpc.MaxConcurrentStreams(uint32(*concurrency)),
+	}
+
+	if *compress {
+		sopts = append(sopts, grpc.RPCCompressor(grpc.NewGZIPCompressor()))
+		sopts = append(sopts, grpc.RPCDecompressor(grpc.NewGZIPDecompressor()))
+	}
+
+	grpcServer := grpc.NewServer(sopts...)
 	defer grpcServer.Stop()
 
 	transfer.RegisterFileTransferServer(grpcServer, cs)

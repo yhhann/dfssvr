@@ -24,6 +24,7 @@ var (
 	fileCount             = flag.Int("file-count", 3, "file count")
 	domain                = flag.Int64("domain", 2, "domain")
 	finalWaitTimeInSecond = flag.Int("final-wait", 10, "the final wait time in seconds")
+	compress              = flag.Bool("compress", true, "compressing transfer file")
 	version               = flag.Bool("v", false, "print version")
 
 	buildTime = ""
@@ -46,7 +47,16 @@ func main() {
 	flag.Parse()
 	checkFlags()
 
-	conn, err := grpc.Dial(*serverAddr, grpc.WithInsecure())
+	gopts := []grpc.DialOption{
+		grpc.WithInsecure(),
+	}
+
+	if *compress {
+		gopts = append(gopts, grpc.WithCompressor(grpc.NewGZIPCompressor()))
+		gopts = append(gopts, grpc.WithDecompressor(grpc.NewGZIPDecompressor()))
+	}
+
+	conn, err := grpc.Dial(*serverAddr, gopts...)
 	if err != nil {
 		log.Fatal("dial error")
 	}
