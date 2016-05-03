@@ -11,7 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 	"gopkg.in/mgo.v2/bson"
 
@@ -28,8 +30,10 @@ var (
 	logDir            = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
 	heartbeatInterval = flag.Int("hb-interval", 5, "time interval in seconds of heart beat")
 
-	DebugMode    = flag.Bool("debug-mode", false, "debug mode")
+	bizElapse    = flag.Int("biz-elapse", 0, "biz emulating elapse")
 	RegisterAddr = flag.String("register-addr", "", "register address")
+
+	AssertionError = errors.New("Assertion error")
 )
 
 const (
@@ -130,23 +134,32 @@ func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream dis
 
 // NegotiateChunkSize negotiates chunk size in bytes between client and server.
 func (s *DFSServer) NegotiateChunkSize(ctx context.Context, req *transfer.NegotiateChunkSizeReq) (*transfer.NegotiateChunkSizeRep, error) {
-
-	if *DebugMode {
-		// Emulate biz elapse.
-		time.Sleep(3 * time.Second)
-
-		if dl, ok := ctx.Deadline(); ok {
-			log.Printf("deadline exceeded %v", dl)
-			timeout := dl.Sub(time.Now())
-			if timeout <= 0 { // Timeout
-				return nil, context.DeadlineExceeded
-			}
+	t, err := processNormalDeadline("GetChunkSize()", ctx, req, func(ctx interface{}, req interface{}) (interface{}, error) {
+		if *bizElapse > 0 {
+			// Emulate biz elapse.
+			time.Sleep(time.Duration(*bizElapse) * time.Second)
 		}
+
+		if r, ok := req.(*transfer.NegotiateChunkSizeReq); ok {
+			rep := &transfer.NegotiateChunkSizeRep{
+				Size: sanitizeChunkSize(r.Size),
+			}
+
+			return rep, nil
+		}
+
+		return nil, AssertionError
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	return &transfer.NegotiateChunkSizeRep{
-		Size: sanitizeChunkSize(req.Size),
-	}, nil
+	if rep, ok := t.(*transfer.NegotiateChunkSizeRep); ok {
+		return rep, nil
+	}
+
+	return nil, AssertionError
 }
 
 func finishRecv(info *transfer.FileInfo, errStr string, stream transfer.FileTransfer_PutFileServer) error {
@@ -167,88 +180,90 @@ func finishRecv(info *transfer.FileInfo, errStr string, stream transfer.FileTran
 
 // PutFile puts a file into server.
 func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
-	var reqInfo *transfer.FileInfo
-	var file fileop.DFSFile
-	var length int
-	var handler *fileop.DFSFileHandler
+	return processStreamDeadline("PutFile()", nil, stream, func(interface{}, interface{}) error {
+		var reqInfo *transfer.FileInfo
+		var file fileop.DFSFile
+		var length int
+		var handler *fileop.DFSFileHandler
 
-	csize := 0
-	startTime := time.Now()
-	peerAddr := getPeerAddressString(stream.Context())
+		csize := 0
+		startTime := time.Now()
+		peerAddr := getPeerAddressString(stream.Context())
 
-	for {
-		req, err := stream.Recv()
-		if err == io.EOF {
-			var errStr string
-			elapse := time.Now().Sub(startTime).Nanoseconds()
-			if reqInfo != nil {
-				inf := file.GetFileInfo()
-				slog := &metadata.SpaceLog{
-					Domain:    inf.Domain,
-					Uid:       fmt.Sprintf("%d", inf.User),
-					Fid:       inf.Id,
-					Biz:       inf.Biz,
-					Size:      int64(length),
-					Timestamp: time.Now(),
-					Type:      metadata.CreateType.String(),
+		for {
+			req, err := stream.Recv()
+			if err == io.EOF {
+				var errStr string
+				elapse := time.Now().Sub(startTime).Nanoseconds()
+				if reqInfo != nil {
+					inf := file.GetFileInfo()
+					slog := &metadata.SpaceLog{
+						Domain:    inf.Domain,
+						Uid:       fmt.Sprintf("%d", inf.User),
+						Fid:       inf.Id,
+						Biz:       inf.Biz,
+						Size:      int64(length),
+						Timestamp: time.Now(),
+						Type:      metadata.CreateType.String(),
+					}
+					s.spaceOp.SaveSpaceLog(slog)
+
+					// save a event for create file ok.
+					event := &metadata.Event{
+						EType:     metadata.SucCreate,
+						Timestamp: util.GetTimeInMilliSecond(),
+						Domain:    inf.Domain,
+						Fid:       inf.Id,
+						Elapse:    elapse,
+						Description: fmt.Sprintf("%s[PutFile], client: %s, dst: %s, size: %d",
+							metadata.SucCreate.String(), peerAddr, (*handler).Name(), length),
+					}
+					s.eventOp.SaveEvent(event)
+					log.Printf("Succeeded to save file: %s, length %d, elapse %d\n", inf, length, elapse)
+				} else {
+					// TODO(hanyh): save a event for create file error.
+					log.Println("Failed to save file: no file info")
+					errStr = "no file info"
 				}
-				s.spaceOp.SaveSpaceLog(slog)
 
-				// save a event for create file ok.
-				event := &metadata.Event{
-					EType:     metadata.SucCreate,
-					Timestamp: util.GetTimeInMilliSecond(),
-					Domain:    inf.Domain,
-					Fid:       inf.Id,
-					Elapse:    elapse,
-					Description: fmt.Sprintf("%s[PutFile], client: %s, dst: %s, size: %d",
-						metadata.SucCreate.String(), peerAddr, (*handler).Name(), length),
-				}
-				s.eventOp.SaveEvent(event)
-				log.Printf("Succeeded to save file: %s, length %d, elapse %d\n", inf, length, elapse)
-			} else {
-				// TODO(hanyh): save a event for create file error.
-				log.Println("Failed to save file: no file info")
-				errStr = "no file info"
+				return finishRecv(file.GetFileInfo(), errStr, stream)
+			}
+			if err != nil {
+				log.Printf("Failed to save file: %s, error: %v\n", reqInfo, err)
+				return err
 			}
 
-			return finishRecv(file.GetFileInfo(), errStr, stream)
-		}
-		if err != nil {
-			log.Printf("Failed to save file: %s, error: %v\n", reqInfo, err)
-			return err
-		}
-
-		if reqInfo == nil {
-			reqInfo = req.GetInfo()
-			log.Printf("PutFile: file info: %v, client: %s", reqInfo, peerAddr)
 			if reqInfo == nil {
-				log.Printf("recv error: no file info")
-				return errors.New("recv error: no file info")
+				reqInfo = req.GetInfo()
+				log.Printf("PutFile: file info: %v, client: %s", reqInfo, peerAddr)
+				if reqInfo == nil {
+					log.Printf("recv error: no file info")
+					return errors.New("recv error: no file info")
+				}
+
+				handler, err = s.selector.getDFSFileHandlerForWrite(reqInfo.Domain)
+				if err != nil {
+					log.Printf("get handler for write error: %v", err)
+					return err
+				}
+
+				file, err = (*handler).Create(reqInfo)
+				if err != nil {
+					log.Printf("Create error, file: %s, error: %v\n", reqInfo, err)
+					return err
+				}
+
+				defer file.Close()
 			}
 
-			handler, err = s.selector.getDFSFileHandlerForWrite(reqInfo.Domain)
+			csize, err = file.Write(req.GetChunk().Payload[:])
 			if err != nil {
-				log.Printf("get handler for write error: %v", err)
 				return err
 			}
 
-			file, err = (*handler).Create(reqInfo)
-			if err != nil {
-				log.Printf("Create error, file: %s, error: %v\n", reqInfo, err)
-				return err
-			}
-
-			defer file.Close()
+			length += csize
 		}
-
-		csize, err = file.Write(req.GetChunk().Payload[:])
-		if err != nil {
-			return err
-		}
-
-		length += csize
-	}
+	})
 }
 
 func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFileHandler, fileop.DFSFile, error) {
@@ -272,66 +287,68 @@ func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFS
 
 // GetFile gets a file from server.
 func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransfer_GetFileServer) error {
-	peerAddr := getPeerAddressString(stream.Context())
+	return processStreamDeadline("GetFile()", req, stream, func(interface{}, interface{}) error {
+		peerAddr := getPeerAddressString(stream.Context())
 
-	log.Printf("GetFile: file info: %v, client: %s", req, peerAddr)
+		log.Printf("GetFile: file info: %v, client: %s", req, peerAddr)
 
-	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
-	if err != nil {
-		log.Printf("Failed to get handler for read, error: %v", err)
-		return err
-	}
+		nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
+		if err != nil {
+			log.Printf("Failed to get handler for read, error: %v", err)
+			return err
+		}
 
-	var m fileop.DFSFileHandler
-	if mh != nil {
-		m = *mh
-	}
+		var m fileop.DFSFileHandler
+		if mh != nil {
+			m = *mh
+		}
 
-	_, file, err := searchFile(req.Id, req.Domain, *nh, m)
-	if err != nil {
-		if err == fileop.FileNotFound {
-			event := &metadata.Event{
-				EType:       metadata.FailRead,
-				Timestamp:   util.GetTimeInMilliSecond(),
-				Domain:      req.Domain,
-				Fid:         req.Id,
-				Description: fmt.Sprintf("%s, client %s", metadata.FailRead.String(), peerAddr),
+		_, file, err := searchFile(req.Id, req.Domain, *nh, m)
+		if err != nil {
+			if err == fileop.FileNotFound {
+				event := &metadata.Event{
+					EType:       metadata.FailRead,
+					Timestamp:   util.GetTimeInMilliSecond(),
+					Domain:      req.Domain,
+					Fid:         req.Id,
+					Description: fmt.Sprintf("%s, client %s", metadata.FailRead.String(), peerAddr),
+				}
+				s.eventOp.SaveEvent(event)
 			}
-			s.eventOp.SaveEvent(event)
-		}
-		return err
-	}
-	defer file.Close()
-
-	var off int64
-	b := make([]byte, fileop.DefaultChunkSizeInBytes)
-	for {
-		length, err := file.Read(b)
-		if err == io.EOF {
-			log.Printf("Succeeded to read file, %s, length %d", req.Id, off)
-			return nil
-		}
-		if err != nil {
-			log.Printf("Failed to read file, %s, error: %v", req.Id, err)
 			return err
 		}
-		if length == 0 {
-			log.Printf("Succeeded to read file, %s, length %d", req.Id, off)
-			return nil
-		}
+		defer file.Close()
 
-		err = stream.Send(&transfer.GetFileRep{
-			Chunk: &transfer.Chunk{
-				Pos:     off,
-				Length:  int64(length),
-				Payload: b[:length],
-			}})
-		if err != nil {
-			return err
-		}
+		var off int64
+		b := make([]byte, fileop.DefaultChunkSizeInBytes)
+		for {
+			length, err := file.Read(b)
+			if err == io.EOF {
+				log.Printf("Succeeded to read file, %s, length %d", req.Id, off)
+				return nil
+			}
+			if err != nil {
+				log.Printf("Failed to read file, %s, error: %v", req.Id, err)
+				return err
+			}
+			if length == 0 {
+				log.Printf("Succeeded to read file, %s, length %d", req.Id, off)
+				return nil
+			}
 
-		off += int64(length)
-	}
+			err = stream.Send(&transfer.GetFileRep{
+				Chunk: &transfer.Chunk{
+					Pos:     off,
+					Length:  int64(length),
+					Payload: b[:length],
+				}})
+			if err != nil {
+				return err
+			}
+
+			off += int64(length)
+		}
+	})
 }
 
 // Remove deletes a file.
@@ -869,4 +886,79 @@ func sanitizeChunkSize(size int64) int64 {
 		return MaxChunkSize
 	}
 	return size
+}
+
+// processStreamDeadline processes a stream grpc calling.
+func processStreamDeadline(logDesc string, req interface{}, stream interface{}, f func(r interface{}, s interface{}) error) error {
+	var ctx context.Context
+	if streem, ok := stream.(grpc.Stream); ok {
+		ctx = streem.Context()
+		_, err := processNormalDeadline(logDesc, ctx, req, func(stream interface{}, req interface{}) (interface{}, error) {
+			err := f(req, stream)
+			return nil, err
+		})
+		return err
+	}
+
+	return f(req, stream)
+}
+
+// processNormalDeadline processes a normal grpc calling.
+func processNormalDeadline(logDesc string, ctx context.Context, req interface{}, f func(c interface{}, r interface{}) (interface{}, error)) (r interface{}, e error) {
+	if dl, ok := ctx.Deadline(); ok {
+		type Result struct {
+			r interface{}
+			e error
+		}
+
+		// For debug, test glog.
+		glog.Infof("%s, deadline %v", logDesc, dl)
+
+		startTime := time.Now()
+		timeout := dl.Sub(startTime)
+
+		defer func() {
+			if e == context.DeadlineExceeded {
+				// TODO(hanyh): monitor this deadline.
+				glog.Infof("%s, deadline exceeded, timeout value %v", logDesc, timeout)
+			} else {
+				glog.Infof("%s, processing in time %v, timeout value %v", logDesc, time.Now().Sub(startTime), timeout)
+			}
+		}()
+
+		if timeout <= 0 {
+			e = context.DeadlineExceeded
+			return
+		}
+
+		results := make(chan *Result)
+
+		ticker := time.NewTicker(timeout)
+		defer func() {
+			ticker.Stop()
+		}()
+
+		go func() {
+			result := &Result{}
+			// Do business.
+			result.r, result.e = f(ctx, req)
+
+			results <- result
+			close(results)
+		}()
+
+		select {
+		case result := <-results:
+			r = result.r
+			e = result.e
+			return
+		case <-ticker.C:
+			e = context.DeadlineExceeded
+			return
+		}
+	}
+
+	// For debug
+	glog.Infof("%s, without deadline", logDesc)
+	return f(ctx, req)
 }

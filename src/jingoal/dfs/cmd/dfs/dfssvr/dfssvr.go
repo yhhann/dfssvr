@@ -25,7 +25,7 @@ var (
 	logDir      = flag.String("log-dir", "/var/log/dfs", "The log directory.")
 	compress    = flag.Bool("compress", true, "compressing transfer file")
 	concurrency = flag.Uint("concurrency", 0, "Concurrency")
-	version     = flag.Bool("v", false, "print version")
+	version     = flag.Bool("version", false, "print version")
 
 	buildTime = ""
 )
