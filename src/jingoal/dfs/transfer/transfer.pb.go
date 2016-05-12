@@ -150,18 +150,102 @@ func (*GetFileReq) ProtoMessage()    {}
 
 // The reply message to get file.
 type GetFileRep struct {
-	Chunk *Chunk `protobuf:"bytes,1,opt,name=chunk" json:"chunk,omitempty"`
+	// Types that are valid to be assigned to Result:
+	//	*GetFileRep_Chunk
+	//	*GetFileRep_Info
+	Result isGetFileRep_Result `protobuf_oneof:"result"`
 }
 
 func (m *GetFileRep) Reset()         { *m = GetFileRep{} }
 func (m *GetFileRep) String() string { return proto.CompactTextString(m) }
 func (*GetFileRep) ProtoMessage()    {}
 
-func (m *GetFileRep) GetChunk() *Chunk {
+type isGetFileRep_Result interface {
+	isGetFileRep_Result()
+}
+
+type GetFileRep_Chunk struct {
+	Chunk *Chunk `protobuf:"bytes,1,opt,name=chunk,oneof"`
+}
+type GetFileRep_Info struct {
+	Info *FileInfo `protobuf:"bytes,2,opt,name=info,oneof"`
+}
+
+func (*GetFileRep_Chunk) isGetFileRep_Result() {}
+func (*GetFileRep_Info) isGetFileRep_Result()  {}
+
+func (m *GetFileRep) GetResult() isGetFileRep_Result {
 	if m != nil {
-		return m.Chunk
+		return m.Result
 	}
 	return nil
+}
+
+func (m *GetFileRep) GetChunk() *Chunk {
+	if x, ok := m.GetResult().(*GetFileRep_Chunk); ok {
+		return x.Chunk
+	}
+	return nil
+}
+
+func (m *GetFileRep) GetInfo() *FileInfo {
+	if x, ok := m.GetResult().(*GetFileRep_Info); ok {
+		return x.Info
+	}
+	return nil
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*GetFileRep) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), []interface{}) {
+	return _GetFileRep_OneofMarshaler, _GetFileRep_OneofUnmarshaler, []interface{}{
+		(*GetFileRep_Chunk)(nil),
+		(*GetFileRep_Info)(nil),
+	}
+}
+
+func _GetFileRep_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*GetFileRep)
+	// result
+	switch x := m.Result.(type) {
+	case *GetFileRep_Chunk:
+		b.EncodeVarint(1<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Chunk); err != nil {
+			return err
+		}
+	case *GetFileRep_Info:
+		b.EncodeVarint(2<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Info); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("GetFileRep.Result has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _GetFileRep_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*GetFileRep)
+	switch tag {
+	case 1: // result.chunk
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(Chunk)
+		err := b.DecodeMessage(msg)
+		m.Result = &GetFileRep_Chunk{msg}
+		return true, err
+	case 2: // result.info
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(FileInfo)
+		err := b.DecodeMessage(msg)
+		m.Result = &GetFileRep_Info{msg}
+		return true, err
+	default:
+		return false, nil
+	}
 }
 
 // The request message to remove file.

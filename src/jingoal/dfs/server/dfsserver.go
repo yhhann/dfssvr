@@ -30,10 +30,9 @@ var (
 	logDir            = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
 	heartbeatInterval = flag.Int("hb-interval", 5, "time interval in seconds of heart beat")
 
-	bizElapse    = flag.Int("biz-elapse", 0, "biz emulating elapse")
 	RegisterAddr = flag.String("register-addr", "", "register address")
 
-	AssertionError = errors.New("Assertion error")
+	AssertionError = errors.New("assertion error")
 )
 
 const (
@@ -134,12 +133,7 @@ func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream dis
 
 // NegotiateChunkSize negotiates chunk size in bytes between client and server.
 func (s *DFSServer) NegotiateChunkSize(ctx context.Context, req *transfer.NegotiateChunkSizeReq) (*transfer.NegotiateChunkSizeRep, error) {
-	t, err := processNormalDeadline("GetChunkSize()", ctx, req, func(ctx interface{}, req interface{}) (interface{}, error) {
-		if *bizElapse > 0 {
-			// Emulate biz elapse.
-			time.Sleep(time.Duration(*bizElapse) * time.Second)
-		}
-
+	t, err := withDeadline("GetChunkSize()", ctx, req, func(ctx interface{}, req interface{}) (interface{}, error) {
 		if r, ok := req.(*transfer.NegotiateChunkSizeReq); ok {
 			rep := &transfer.NegotiateChunkSizeRep{
 				Size: sanitizeChunkSize(r.Size),
@@ -319,6 +313,17 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 		}
 		defer file.Close()
 
+		// First, we send file info.
+		err = stream.Send(&transfer.GetFileRep{
+			Result: &transfer.GetFileRep_Info{
+				Info: file.GetFileInfo(),
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		// Second, we send file content in a loop.
 		var off int64
 		b := make([]byte, fileop.DefaultChunkSizeInBytes)
 		for {
@@ -337,11 +342,14 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 			}
 
 			err = stream.Send(&transfer.GetFileRep{
-				Chunk: &transfer.Chunk{
-					Pos:     off,
-					Length:  int64(length),
-					Payload: b[:length],
-				}})
+				Result: &transfer.GetFileRep_Chunk{
+					Chunk: &transfer.Chunk{
+						Pos:     off,
+						Length:  int64(length),
+						Payload: b[:length],
+					},
+				},
+			})
 			if err != nil {
 				return err
 			}
@@ -355,89 +363,110 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq) (*transfer.RemoveFileRep, error) {
 	peerAddr := getPeerAddressString(ctx)
 
-	log.Printf("RemoveFile, file id: %s, domain: %d, client: %s, call stack:\n%v", req.Id, req.Domain,
-		peerAddr, req.GetDesc().Desc)
-
-	startTime := time.Now()
-
-	// log the remove command for audit.
-	event := &metadata.Event{
-		EType:     metadata.CommandDelete,
-		Timestamp: util.GetTimeInMilliSecond(),
-		Domain:    req.Domain,
-		Fid:       req.Id,
-		Elapse:    -1,
-		Description: fmt.Sprintf("%s, client %s\n%s", metadata.CommandDelete.String(),
-			peerAddr, req.GetDesc().Desc),
-	}
-	s.eventOp.SaveEvent(event)
-
-	rep := &transfer.RemoveFileRep{}
-	result := false
-
-	var p fileop.DFSFileHandler
-	var fm *fileop.FileMeta
-
-	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
-	if err != nil {
-		log.Printf("Failed to get handler for read, error: %v", err)
-		return rep, err
+	clientDesc := ""
+	if req.GetDesc() != nil {
+		clientDesc = req.GetDesc().Desc
 	}
 
-	if nh != nil {
-		p = *nh
-		result, fm, err = p.Remove(req.Id, req.Domain)
-		if err != nil {
-			log.Printf("Failed to remove file %s from %v", req.Id, p.Name())
-		}
-	}
+	log.Printf("RemoveFile, file id: %s, domain: %d, client: %s, client description:\n%v", req.Id, req.Domain, peerAddr, clientDesc)
 
-	if mh != nil {
-		p = *mh
-		result, fm, err = p.Remove(req.Id, req.Domain)
-		if err != nil {
-			log.Printf("Failed to remove file %s from %v", req.Id, p.Name())
-		}
-	}
-
-	// space log.
-	if result {
-		fid, ok := fm.Id.(bson.ObjectId)
+	t, err := withDeadline("RemoveFile()", ctx, req, func(c interface{}, r interface{}) (interface{}, error) {
+		req, ok := r.(*transfer.RemoveFileReq)
 		if !ok {
-			log.Printf("Failed to convert file to string, %T", fm.Id)
+			return nil, AssertionError
 		}
-		slog := &metadata.SpaceLog{
-			Domain:    fm.Domain,
-			Uid:       fm.UserId,
-			Fid:       fid.Hex(),
-			Biz:       fm.Biz,
-			Size:      fm.Length,
-			Timestamp: time.Now(),
-			Type:      metadata.DeleteType.String(),
+
+		startTime := time.Now()
+
+		// log the remove command for audit.
+		event := &metadata.Event{
+			EType:     metadata.CommandDelete,
+			Timestamp: util.GetTimeInMilliSecond(),
+			Domain:    req.Domain,
+			Fid:       req.Id,
+			Elapse:    -1,
+			Description: fmt.Sprintf("%s, client %s\n%s", metadata.CommandDelete.String(),
+				peerAddr, clientDesc),
 		}
-		s.spaceOp.SaveSpaceLog(slog)
+		s.eventOp.SaveEvent(event)
+
+		rep := &transfer.RemoveFileRep{}
+		result := false
+
+		var p fileop.DFSFileHandler
+		var fm *fileop.FileMeta
+
+		nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
+		if err != nil {
+			log.Printf("Failed to get handler for read, error: %v", err)
+			return rep, err
+		}
+
+		if nh != nil {
+			p = *nh
+			result, fm, err = p.Remove(req.Id, req.Domain)
+			if err != nil {
+				log.Printf("Failed to remove file %s from %v", req.Id, p.Name())
+			}
+		}
+
+		if mh != nil {
+			p = *mh
+			result, fm, err = p.Remove(req.Id, req.Domain)
+			if err != nil {
+				log.Printf("Failed to remove file %s from %v", req.Id, p.Name())
+			}
+		}
+
+		// space log.
+		if result {
+			fid, ok := fm.Id.(bson.ObjectId)
+			if !ok {
+				log.Printf("Failed to convert file to string, %T", fm.Id)
+			}
+			slog := &metadata.SpaceLog{
+				Domain:    fm.Domain,
+				Uid:       fm.UserId,
+				Fid:       fid.Hex(),
+				Biz:       fm.Biz,
+				Size:      fm.Length,
+				Timestamp: time.Now(),
+				Type:      metadata.DeleteType.String(),
+			}
+			s.spaceOp.SaveSpaceLog(slog)
+		}
+
+		// log the remove result for audit.
+		resultEvent := &metadata.Event{
+			EType:     metadata.SucDelete,
+			Timestamp: util.GetTimeInMilliSecond(),
+			Domain:    req.Domain,
+			Fid:       req.Id,
+			Elapse:    time.Now().Sub(startTime).Nanoseconds(),
+			Description: fmt.Sprintf("%s, client %s, command %s, result %t, from %v",
+				metadata.SucDelete.String(), peerAddr, event.Id.Hex(), result, p.Name()),
+		}
+		s.eventOp.SaveEvent(resultEvent)
+
+		if result {
+			log.Printf("Succeeded to remove entity %s from %v.", req.Id, p.Name())
+		} else {
+			log.Printf("Succeeded to remove reference %s from %v", req.Id, p.Name())
+		}
+
+		rep.Result = result
+		return rep, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	// log the remove result for audit.
-	resultEvent := &metadata.Event{
-		EType:     metadata.SucDelete,
-		Timestamp: util.GetTimeInMilliSecond(),
-		Domain:    req.Domain,
-		Fid:       req.Id,
-		Elapse:    time.Now().Sub(startTime).Nanoseconds(),
-		Description: fmt.Sprintf("%s, client %s, command %s, result %t, from %v",
-			metadata.SucDelete.String(), peerAddr, event.Id.Hex(), result, p.Name()),
-	}
-	s.eventOp.SaveEvent(resultEvent)
-
-	if result {
-		log.Printf("Succeeded to remove entity %s from %v.", req.Id, p.Name())
-	} else {
-		log.Printf("Succeeded to remove reference %s from %v", req.Id, p.Name())
+	if result, ok := t.(*transfer.RemoveFileRep); ok {
+		return result, nil
 	}
 
-	rep.Result = result
-	return rep, nil
+	return nil, AssertionError
 }
 
 func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {
@@ -470,37 +499,56 @@ func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {
 func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (*transfer.DuplicateRep, error) {
 	peerAddr := getPeerAddressString(ctx)
 	log.Printf("Duplicate, file id: %s, domain: %d, client: %s", req.Id, req.Domain, peerAddr)
-	startTime := time.Now()
 
-	did, err := s.duplicate(req.Id, req.Domain)
-	if err != nil {
+	t, err := withDeadline("Duplicate()", ctx, req, func(c interface{}, r interface{}) (interface{}, error) {
+		startTime := time.Now()
+		req, ok := r.(*transfer.DuplicateReq)
+		if !ok {
+			return nil, AssertionError
+		}
+
+		did, err := s.duplicate(req.Id, req.Domain)
+		if err != nil {
+			event := &metadata.Event{
+				EType:       metadata.FailDupl,
+				Timestamp:   util.GetTimeInMilliSecond(),
+				Domain:      req.Domain,
+				Fid:         req.Id,
+				Description: fmt.Sprintf("%s, client %s", metadata.FailDupl.String(), peerAddr),
+				Elapse:      time.Now().Sub(startTime).Nanoseconds(),
+			}
+			s.eventOp.SaveEvent(event)
+
+			log.Printf("Failed to duplicate %s[%d], error %v", req.Id, req.Domain, err)
+			return nil, err
+		}
+
 		event := &metadata.Event{
-			EType:       metadata.FailDupl,
+			EType:       metadata.SucDupl,
 			Timestamp:   util.GetTimeInMilliSecond(),
 			Domain:      req.Domain,
 			Fid:         req.Id,
-			Description: fmt.Sprintf("%s, client %s", metadata.FailDupl.String(), peerAddr),
+			Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucDupl.String(), peerAddr, did),
 			Elapse:      time.Now().Sub(startTime).Nanoseconds(),
 		}
 		s.eventOp.SaveEvent(event)
 
-		log.Printf("Failed to duplicate %s[%d], error %v", req.Id, req.Domain, err)
+		return &transfer.DuplicateRep{
+			Id: did,
+		}, nil
+
+	})
+
+	if err != nil {
 		return nil, err
 	}
 
-	event := &metadata.Event{
-		EType:       metadata.SucDupl,
-		Timestamp:   util.GetTimeInMilliSecond(),
-		Domain:      req.Domain,
-		Fid:         req.Id,
-		Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucDupl.String(), peerAddr, did),
-		Elapse:      time.Now().Sub(startTime).Nanoseconds(),
+	result, ok := t.(*transfer.DuplicateRep)
+	if ok {
+		return result, nil
 	}
-	s.eventOp.SaveEvent(event)
 
-	return &transfer.DuplicateRep{
-		Id: did,
-	}, nil
+	return nil, AssertionError
 }
 
 func (s *DFSServer) exist(id string, domain int64) (result bool, err error) {
@@ -538,14 +586,31 @@ func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (*transfe
 	log.Printf("Exist, file id: %s, domain: %d, client: %s", req.Id, req.Domain,
 		getPeerAddressString(ctx))
 
-	result, err := s.exist(req.Id, req.Domain)
+	t, err := withDeadline("Exist()", ctx, req, func(c interface{}, r interface{}) (interface{}, error) {
+		req, ok := r.(*transfer.ExistReq)
+		if !ok {
+			return nil, AssertionError
+		}
+
+		result, err := s.exist(req.Id, req.Domain)
+		if err != nil {
+			log.Printf("Failed to exist %s, %d", req.Id, req.Domain)
+		}
+
+		return &transfer.ExistRep{
+			Result: result,
+		}, err
+	})
+
 	if err != nil {
-		log.Printf("Failed to exist %s, %d", req.Id, req.Domain)
+		return nil, err
 	}
 
-	return &transfer.ExistRep{
-		Result: result,
-	}, err
+	if result, ok := t.(*transfer.ExistRep); ok {
+		return result, err
+	}
+
+	return nil, AssertionError
 }
 
 func (s *DFSServer) findByMd5(md5 string, domain int64, size int64) (fileop.DFSFileHandler, string, error) {
@@ -590,57 +655,89 @@ func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*t
 	log.Printf("GetByMd5, MD5: %s, domain: %d, size: %d, client: %s",
 		req.Md5, req.Domain, req.Size, peerAddr)
 
-	p, oid, err := s.findByMd5(req.Md5, req.Domain, req.Size)
-	if err != nil {
-		log.Printf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
-		return nil, err
-	}
+	t, err := withDeadline("GetByMd5()", ctx, req, func(c interface{}, r interface{}) (interface{}, error) {
+		req, ok := r.(*transfer.GetByMd5Req)
+		if !ok {
+			return nil, AssertionError
+		}
 
-	did, err := p.Duplicate(oid)
-	if err != nil {
+		p, oid, err := s.findByMd5(req.Md5, req.Domain, req.Size)
+		if err != nil {
+			log.Printf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
+			return nil, err
+		}
+
+		did, err := p.Duplicate(oid)
+		if err != nil {
+			event := &metadata.Event{
+				EType:       metadata.FailMd5,
+				Timestamp:   util.GetTimeInMilliSecond(),
+				Domain:      req.Domain,
+				Fid:         oid,
+				Description: fmt.Sprintf("%s, client %s", metadata.FailMd5.String(), peerAddr),
+			}
+			s.eventOp.SaveEvent(event)
+
+			return nil, err
+		}
+
 		event := &metadata.Event{
-			EType:       metadata.FailMd5,
+			EType:       metadata.SucMd5,
 			Timestamp:   util.GetTimeInMilliSecond(),
 			Domain:      req.Domain,
 			Fid:         oid,
-			Description: fmt.Sprintf("%s, client %s", metadata.FailMd5.String(), peerAddr),
+			Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucMd5.String(), peerAddr, did),
 		}
 		s.eventOp.SaveEvent(event)
 
+		log.Printf("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
+			oid, req.Md5, req.Domain, req.Size)
+
+		return &transfer.GetByMd5Rep{
+			Fid: did,
+		}, nil
+	})
+
+	if err != nil {
 		return nil, err
 	}
 
-	event := &metadata.Event{
-		EType:       metadata.SucMd5,
-		Timestamp:   util.GetTimeInMilliSecond(),
-		Domain:      req.Domain,
-		Fid:         oid,
-		Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucMd5.String(), peerAddr, did),
+	if result, ok := t.(*transfer.GetByMd5Rep); ok {
+		return result, nil
 	}
-	s.eventOp.SaveEvent(event)
 
-	log.Printf("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
-		oid, req.Md5, req.Domain, req.Size)
-
-	return &transfer.GetByMd5Rep{
-		Fid: did,
-	}, nil
+	return nil, AssertionError
 }
 
 // ExistByMd5 checks existentiality of a file.
 func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.ExistRep, error) {
-	log.Printf("ExistByMd5, MD5: %s, domain: %d, size: %d, client: %s", req.Md5, req.Domain, req.Size,
-		getPeerAddressString(ctx))
+	log.Printf("ExistByMd5, MD5: %s, domain: %d, size: %d, client: %s", req.Md5, req.Domain, req.Size, getPeerAddressString(ctx))
+	t, err := withDeadline("ExistByMd5()", ctx, req, func(c interface{}, r interface{}) (interface{}, error) {
+		req, ok := r.(*transfer.GetByMd5Req)
+		if !ok {
+			return nil, AssertionError
+		}
 
-	_, _, err := s.findByMd5(req.Md5, req.Domain, req.Size)
+		_, _, err := s.findByMd5(req.Md5, req.Domain, req.Size)
+		if err != nil {
+			log.Printf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
+			return nil, err
+		}
+
+		return &transfer.ExistRep{
+			Result: true,
+		}, nil
+	})
+
 	if err != nil {
-		log.Printf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
 		return nil, err
 	}
 
-	return &transfer.ExistRep{
-		Result: true,
-	}, nil
+	if result, ok := t.(*transfer.ExistRep); ok {
+		return result, nil
+	}
+
+	return nil, AssertionError
 }
 
 // Copy copies a file and returns its fid.
@@ -650,90 +747,108 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 	log.Printf("Copy, srcId: %s, srcDomain: %d, dstDomain: %d, dstUid: %d, dstBiz: %s, client: %s\n",
 		req.SrcFid, req.SrcDomain, req.DstDomain, req.DstUid, req.DstBiz, peerAddr)
 
-	if req.SrcDomain == req.DstDomain {
-		did, err := s.duplicate(req.SrcFid, req.DstDomain)
+	t, err := withDeadline("Copy()", ctx, req, func(c interface{}, r interface{}) (interface{}, error) {
+		req, ok := r.(*transfer.CopyReq)
+		if !ok {
+			return nil, AssertionError
+		}
+
+		if req.SrcDomain == req.DstDomain {
+			did, err := s.duplicate(req.SrcFid, req.DstDomain)
+			if err != nil {
+				return nil, err
+			}
+
+			log.Printf("Copy is converted to duplicate, srcId: %s, srcDomain: %d, dstDomain: %d",
+				req.SrcFid, req.SrcDomain, req.DstDomain)
+
+			return &transfer.CopyRep{
+				Fid: did,
+			}, nil
+		}
+
+		startTime := time.Now()
+
+		// open source file.
+		nh, mh, err := s.selector.getDFSFileHandlerForRead(req.SrcDomain)
 		if err != nil {
 			return nil, err
 		}
 
-		log.Printf("Copy is converted to duplicate, srcId: %s, srcDomain: %d, dstDomain: %d",
-			req.SrcFid, req.SrcDomain, req.DstDomain)
+		var m fileop.DFSFileHandler
+		if mh != nil {
+			m = *mh
+		}
+
+		_, rf, err := searchFile(req.SrcFid, req.SrcDomain, *nh, m)
+		if err != nil {
+			return nil, err
+		}
+		defer rf.Close()
+
+		// open destination file.
+		handler, err := s.selector.getDFSFileHandlerForWrite(req.DstDomain)
+		if err != nil {
+			return nil, err
+		}
+
+		wf, err := (*handler).Create(&transfer.FileInfo{
+			Domain: req.DstDomain,
+			User:   req.DstUid,
+			Biz:    req.DstBiz,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		defer wf.Close()
+
+		length, err := io.Copy(wf, rf)
+		if err != nil {
+			return nil, err
+		}
+
+		inf := wf.GetFileInfo()
+		log.Printf("Succeeded to copy file %s to %s", req.SrcFid, inf.Id)
+
+		// space log.
+		slog := &metadata.SpaceLog{
+			Domain:    inf.Domain,
+			Uid:       fmt.Sprintf("%d", inf.User),
+			Fid:       inf.Id,
+			Biz:       inf.Biz,
+			Size:      length,
+			Timestamp: time.Now(),
+			Type:      metadata.CreateType.String(),
+		}
+		s.spaceOp.SaveSpaceLog(slog)
+
+		event := &metadata.Event{
+			EType:     metadata.SucCreate,
+			Timestamp: util.GetTimeInMilliSecond(),
+			Domain:    inf.Domain,
+			Fid:       inf.Id,
+			Elapse:    time.Now().Sub(startTime).Nanoseconds(),
+			Description: fmt.Sprintf("%s[Copy], client: %s, srcFid: %s, dst: %s", metadata.SucCreate.String(),
+				peerAddr, req.SrcFid, (*handler).Name()),
+		}
+		s.eventOp.SaveEvent(event)
 
 		return &transfer.CopyRep{
-			Fid: did,
+			Fid: inf.Id,
 		}, nil
-	}
-
-	startTime := time.Now()
-
-	// open source file.
-	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.SrcDomain)
-	if err != nil {
-		return nil, err
-	}
-
-	var m fileop.DFSFileHandler
-	if mh != nil {
-		m = *mh
-	}
-
-	_, rf, err := searchFile(req.SrcFid, req.SrcDomain, *nh, m)
-	if err != nil {
-		return nil, err
-	}
-	defer rf.Close()
-
-	// open destination file.
-	handler, err := s.selector.getDFSFileHandlerForWrite(req.DstDomain)
-	if err != nil {
-		return nil, err
-	}
-
-	wf, err := (*handler).Create(&transfer.FileInfo{
-		Domain: req.DstDomain,
-		User:   req.DstUid,
-		Biz:    req.DstBiz,
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	defer wf.Close()
-
-	length, err := io.Copy(wf, rf)
-	if err != nil {
-		return nil, err
+	result, ok := t.(*transfer.CopyRep)
+	if ok {
+		return result, nil
 	}
 
-	inf := wf.GetFileInfo()
-	log.Printf("Succeeded to copy file %s to %s", req.SrcFid, inf.Id)
-
-	// space log.
-	slog := &metadata.SpaceLog{
-		Domain:    inf.Domain,
-		Uid:       fmt.Sprintf("%d", inf.User),
-		Fid:       inf.Id,
-		Biz:       inf.Biz,
-		Size:      length,
-		Timestamp: time.Now(),
-		Type:      metadata.CreateType.String(),
-	}
-	s.spaceOp.SaveSpaceLog(slog)
-
-	event := &metadata.Event{
-		EType:     metadata.SucCreate,
-		Timestamp: util.GetTimeInMilliSecond(),
-		Domain:    inf.Domain,
-		Fid:       inf.Id,
-		Elapse:    time.Now().Sub(startTime).Nanoseconds(),
-		Description: fmt.Sprintf("%s[Copy], client: %s, srcFid: %s, dst: %s", metadata.SucCreate.String(),
-			peerAddr, req.SrcFid, (*handler).Name()),
-	}
-	s.eventOp.SaveEvent(event)
-
-	return &transfer.CopyRep{
-		Fid: inf.Id,
-	}, nil
+	return nil, AssertionError
 }
 
 func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
@@ -893,7 +1008,7 @@ func processStreamDeadline(logDesc string, req interface{}, stream interface{}, 
 	var ctx context.Context
 	if streem, ok := stream.(grpc.Stream); ok {
 		ctx = streem.Context()
-		_, err := processNormalDeadline(logDesc, ctx, req, func(stream interface{}, req interface{}) (interface{}, error) {
+		_, err := withDeadline(logDesc, ctx, req, func(stream interface{}, req interface{}) (interface{}, error) {
 			err := f(req, stream)
 			return nil, err
 		})
@@ -903,15 +1018,15 @@ func processStreamDeadline(logDesc string, req interface{}, stream interface{}, 
 	return f(req, stream)
 }
 
-// processNormalDeadline processes a normal grpc calling.
-func processNormalDeadline(logDesc string, ctx context.Context, req interface{}, f func(c interface{}, r interface{}) (interface{}, error)) (r interface{}, e error) {
+// withDeadline processes a normal grpc calling.
+func withDeadline(logDesc string, ctx context.Context, req interface{}, f func(c interface{}, r interface{}) (interface{}, error)) (r interface{}, e error) {
 	if dl, ok := ctx.Deadline(); ok {
 		type Result struct {
 			r interface{}
 			e error
 		}
 
-		// For debug, test glog.
+		// For debug
 		glog.Infof("%s, deadline %v", logDesc, dl)
 
 		startTime := time.Now()
@@ -960,5 +1075,6 @@ func processNormalDeadline(logDesc string, ctx context.Context, req interface{},
 
 	// For debug
 	glog.Infof("%s, without deadline", logDesc)
+
 	return f(ctx, req)
 }

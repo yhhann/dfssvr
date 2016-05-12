@@ -60,7 +60,10 @@ message GetFileReq {
 
 // The reply message to get file.
 message GetFileRep {
-    Chunk chunk = 1;
+    oneof result{
+        Chunk chunk   = 1;
+        FileInfo info = 2;
+    }
 }
 
 // The request message to remove file.

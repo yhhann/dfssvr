@@ -71,6 +71,7 @@ type Event struct {
 	EType       EventType     `bson:"eType"`               // event type (dfs 2.0)
 	Fid         string        `bson:"fid"`                 // fid
 	Elapse      int64         `bson:"elapse,omitempty"`    // elapse in nanosecond
+	// TODO(hanyh): Add a field to record node which generats this event.
 }
 
 type EventOp struct {

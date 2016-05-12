@@ -23,7 +23,7 @@ var (
 	shardDbName = flag.String("shard-name", "shard", "shard database name")
 	shardDbUri  = flag.String("shard-dburi", "mongodb://127.0.0.1:27017", "shard database uri")
 	logDir      = flag.String("log-dir", "/var/log/dfs", "The log directory.")
-	compress    = flag.Bool("compress", true, "compressing transfer file")
+	compress    = flag.Bool("compress", false, "compressing transfer file")
 	concurrency = flag.Uint("concurrency", 0, "Concurrency")
 	version     = flag.Bool("version", false, "print version")
 
