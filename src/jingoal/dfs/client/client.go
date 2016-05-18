@@ -20,6 +20,7 @@ import (
 var (
 	serverAddr = flag.String("server-addr", "127.0.0.1:10000", "server address")
 	compress   = flag.Bool("compress", false, "compressing transfer file")
+	bufSize    = flag.Int("buf-size", 8192, "size of buffer to read and write")
 
 	// clientId is the unique id for client, how to assign an id to a client
 	// depends upon the client.
@@ -317,12 +318,15 @@ func Delete(fid string, domain int64, timeout time.Duration) error {
 }
 
 // WriteFile writes a file for given content. Only for test use.
-func WriteFile(payload []byte, chunkSize int, domain int64, timeout time.Duration) (*transfer.FileInfo, error) {
+func WriteFile(payload []byte, chunkSize int, domain int64, timeout time.Duration) (info *transfer.FileInfo, err error) {
 	size := int64(len(payload))
 	fn := fmt.Sprintf("%d", time.Now().UnixNano())
-	writer, err := GetWriter(domain, size, fn, "test-biz", "1001", timeout)
+	start := time.Now()
+	var writer *DFSWriter
+
+	writer, err = GetWriter(domain, size, fn, "test-biz", "1001", timeout)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer writer.Close()
 
@@ -337,53 +341,70 @@ func WriteFile(payload []byte, chunkSize int, domain int64, timeout time.Duratio
 		p := payload[pos:end]
 		md5.Write(p)
 
-		n, err := writer.Write(p)
+		var n int
+		n, err = writer.Write(p)
 		if err != nil {
 			if err == io.EOF {
-				writer.Close()
-				return writer.GetFileInfo()
+				return writer.GetFileInfoAndClose()
 			}
-			return nil, err
+			log.Printf("write file error %v", err)
+			return
 		}
 		pos += int64(n)
 	}
 
-	writer.Close()
-	return writer.GetFileInfo()
+	info, err = writer.GetFileInfoAndClose()
+
+	if err != nil {
+		log.Printf("write file error %v", err)
+		return
+	}
+
+	// TODO(hanyh): Save the success event in client metrics.
+	log.Printf("write file ok, file %v, elapse %f second\n", info, time.Since(start).Seconds())
+	return info, nil
 }
 
 // ReadFile reads a file content. Only for test use.
-func ReadFile(info *transfer.FileInfo, timeout time.Duration) error {
+func ReadFile(info *transfer.FileInfo, timeout time.Duration) (err error) {
 	startTime := time.Now()
 
-	reader, err := GetReader(info.Domain, info.Id, timeout)
+	defer func() {
+		if err != nil {
+			log.Printf("read file error, file %s, %v", info.Id, err)
+		} else {
+			log.Printf("read file ok, file %s, elapse %f seconds.", info.Id, time.Since(startTime).Seconds())
+		}
+	}()
+
+	var reader *DFSReader
+	reader, err = GetReader(info.Domain, info.Id, timeout)
 	if err != nil {
-		return err
+		return
 	}
 
-	buf := make([]byte, 8192)
+	buf := make([]byte, *bufSize)
 	md5 := md5.New()
 	for {
-		n, err := reader.Read(buf)
+		var n int
+		n, err = reader.Read(buf)
 		if err == io.EOF {
+			err = nil
 			break
 		}
 		if err != nil {
-			return err
+			return
 		}
 
 		md5.Write(buf[:n])
 	}
 
-	secs := time.Since(startTime).Seconds()
 	md5Str := fmt.Sprintf("%x", md5.Sum(nil))
-	if md5Str == info.Md5 {
-		log.Printf("read file ok, fileid %s, elapse %f second\n", info.Id, secs)
-	} else {
-		log.Printf("read file error, fileid %s, md5 not equals", info.Id)
+	if md5Str != info.Md5 {
+		err = fmt.Errorf("md5 not equals")
 	}
 
-	return nil
+	return
 }
 
 // GetReader returns a io.Reader object.
@@ -458,12 +479,12 @@ func GetWriter(domain int64, size int64, filename string, biz string, user strin
 		return nil, AssertionError
 	}
 
-	writer := NewDFSWriter(&fileInfo, stream)
+	log.Printf("Succeeded to get writer %s, %d, %d, %s, %s", filename, domain, size, biz, user)
 
-	return writer, nil
+	return NewDFSWriter(&fileInfo, stream), nil
 }
 
-func withTimeout(logDesc string, ctx context.Context, req interface{},
+func withTimeout(serviceName string, ctx context.Context, req interface{},
 	f func(context.Context, interface{}, ...interface{}) (interface{}, error),
 	timeout time.Duration) (interface{}, error) {
 
@@ -471,7 +492,6 @@ func withTimeout(logDesc string, ctx context.Context, req interface{},
 	tx := ctx
 
 	if timeout > 0 {
-		log.Printf("%s set timeout to %v", logDesc, timeout)
 		tx, cancel = context.WithTimeout(ctx, timeout)
 	}
 
@@ -479,6 +499,7 @@ func withTimeout(logDesc string, ctx context.Context, req interface{},
 	if err != nil {
 		if err == context.DeadlineExceeded && cancel != nil {
 			cancel()
+			log.Printf("%s has been cancelled, %v", serviceName, err)
 		}
 		return nil, err
 	}

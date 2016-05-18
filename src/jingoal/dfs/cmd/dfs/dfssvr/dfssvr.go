@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 
 	"jingoal/dfs/discovery"
+	"jingoal/dfs/instrument"
 	"jingoal/dfs/server"
 	"jingoal/dfs/transfer"
 )
@@ -76,6 +77,7 @@ func setupLog() {
 			log.Fatalf("Failed to create log directory: %v", err)
 		}
 	}
+
 	f, err := os.OpenFile(filepath.Join(*logDir, "dfs-server.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("Error opening log file: %v", err)
@@ -90,6 +92,8 @@ func main() {
 	checkFlags()
 
 	setupLog()
+
+	instrument.StartMetrics()
 
 	lis, err := net.Listen("tcp", *lsnAddr)
 	if err != nil {

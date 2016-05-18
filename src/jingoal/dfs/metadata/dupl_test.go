@@ -132,9 +132,9 @@ func TestDupl(t *testing.T) {
 	if err != nil {
 		t.Errorf("LookupDuplbyId error %v", err)
 	}
-	if lookedDupl.UploadDate.UnixNano()/1000000 != dupl.UploadDate.UnixNano()/1000000 {
+	if lookedDupl.UploadDate.UnixNano()/1e6 != dupl.UploadDate.UnixNano()/1e6 {
 		t.Errorf("LookupDuplbyId error, not equal: %d--%d",
-			lookedDupl.UploadDate.UnixNano()/1000000, dupl.UploadDate.UnixNano()/1000000)
+			lookedDupl.UploadDate.UnixNano()/1e6, dupl.UploadDate.UnixNano()/1e6)
 	}
 
 	dupls := op.LookupDuplByRefid(ref.Id)

@@ -14,7 +14,6 @@ import (
 )
 
 var (
-	WriterNotClosed     = errors.New("Writer not closed")
 	WriterAlreadyClosed = errors.New("Writer already closed")
 	ReaderAlreadyClosed = errors.New("Reader already closed")
 )
@@ -149,12 +148,14 @@ func (w *DFSWriter) Close() error {
 	return nil
 }
 
-// GetFileInfo returns an object which hold file information.
-// This method must be called after the writer be closed,
-// if not, the method returns WriteNotClosed error.
-func (w *DFSWriter) GetFileInfo() (*transfer.FileInfo, error) {
+// GetFileInfoClose returns an object which hold file information.
+// This method would call Close() before return if the writer is
+// not closed.
+func (w *DFSWriter) GetFileInfoAndClose() (*transfer.FileInfo, error) {
 	if !w.closed {
-		return nil, WriterNotClosed
+		if err := w.Close(); err != nil {
+			return nil, err
+		}
 	}
 	return w.info, nil
 }
