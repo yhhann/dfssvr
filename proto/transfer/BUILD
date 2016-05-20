@@ -1,0 +1,24 @@
+package(default_visibility = ["//visibility:public"])
+
+load("@com_jingoal_rules//protobuf:def.bzl", "genproto_go", "genproto_jspb")
+load("@io_bazel_rules_closure//closure:defs.bzl", "closure_js_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+genproto_go(
+  name = "transfer_proto",
+  src = "transfer.proto",
+  has_service = True,
+)
+
+go_library(
+  name = "go_default_library",
+  srcs = [
+    ":transfer_proto",
+    "global.go",
+  ],
+  deps = [
+    "//third-party-go/vendor/github.com/golang/protobuf/proto:go_default_library",
+    "//third-party-go/vendor/golang.org/x/net/context:go_default_library",
+    "//third-party-go/vendor/google.golang.org/grpc:go_default_library",
+  ]
+)
