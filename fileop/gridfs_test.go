@@ -8,8 +8,8 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
-	"jingoal/dfs/metadata"
-	"jingoal/dfs/transfer"
+	"jingoal.com/dfs/metadata"
+	"jingoal.com/dfs/proto/transfer"
 )
 
 func TestServerStatus(t *testing.T) {

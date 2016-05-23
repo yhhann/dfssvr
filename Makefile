@@ -11,11 +11,10 @@ dfs: fmt
 	go install -ldflags ${LDFLAG} jingoal/dfs/cmd/dfs/dfscln
 	go install -ldflags ${LDFLAG} jingoal/dfs/cmd/dfs/dfssvr
 
+.PHONY: proto
 proto:
-	protoc -Isrc --go_out=plugins=grpc:src src/jingoal/dfs/proto/discovery/*.proto
-	protoc -Isrc --go_out=plugins=grpc:src src/jingoal/dfs/proto/transfer/*.proto
-	mv src/jingoal/dfs/proto/discovery/discovery.pb.go src/jingoal/dfs/discovery/discovery.pb.go 
-	mv src/jingoal/dfs/proto/transfer/transfer.pb.go src/jingoal/dfs/transfer/transfer.pb.go
+	protoc --go_out=plugins=grpc:. proto/discovery/*.proto
+	protoc --go_out=plugins=grpc:. proto/transfer/*.proto
 
 java:
 	protoc --plugin=protoc-gen-grpc-java=/usr/local/bin/protoc-gen-grpc-java --grpc-java_out=../dfs-client/src/main/java --java_out=../dfs-client/src/main/java src/jingoal/dfs/proto/discovery/*.proto

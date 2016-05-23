@@ -7,8 +7,8 @@ import (
 
 	"gopkg.in/mgo.v2/bson"
 
-	"jingoal/dfs/metadata"
-	"jingoal/dfs/util"
+	"jingoal.com/dfs/metadata"
+	"jingoal.com/dfs/util"
 )
 
 var (

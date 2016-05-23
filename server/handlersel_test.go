@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"jingoal/dfs/metadata"
+	"jingoal.com/dfs/metadata"
 )
 
 func updateSegment(segments []*metadata.Segment, segment *metadata.Segment) []*metadata.Segment {

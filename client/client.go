@@ -1,10 +1,8 @@
 package client
 
 import (
-	"crypto/md5"
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"strconv"
@@ -20,7 +18,6 @@ import (
 var (
 	serverAddr = flag.String("server-addr", "127.0.0.1:10000", "server address")
 	compress   = flag.Bool("compress", false, "compressing transfer file")
-	bufSize    = flag.Int("buf-size", 8192, "size of buffer to read and write")
 
 	// clientId is the unique id for client, how to assign an id to a client
 	// depends upon the client.
@@ -317,102 +314,48 @@ func Delete(fid string, domain int64, timeout time.Duration) error {
 	return AssertionError
 }
 
-// WriteFile writes a file for given content. Only for test use.
-func WriteFile(payload []byte, chunkSize int, domain int64, timeout time.Duration) (info *transfer.FileInfo, err error) {
-	size := int64(len(payload))
-	fn := fmt.Sprintf("%d", time.Now().UnixNano())
-	start := time.Now()
-	var writer *DFSWriter
-
-	writer, err = GetWriter(domain, size, fn, "test-biz", "1001", timeout)
-	if err != nil {
-		return
+// Stat gets file info with given fid.
+func Stat(fid string, domain int64, timeout time.Duration) (*transfer.FileInfo, error) {
+	statReq := &transfer.GetFileReq{
+		Id:     fid,
+		Domain: domain,
 	}
-	defer writer.Close()
 
-	var pos int64
-	md5 := md5.New()
-	for pos < size {
-		end := pos + int64(chunkSize)
-		if end > size {
-			end = size
-		}
-
-		p := payload[pos:end]
-		md5.Write(p)
-
-		var n int
-		n, err = writer.Write(p)
-		if err != nil {
-			if err == io.EOF {
-				return writer.GetFileInfoAndClose()
+	t, err := withTimeout("Stat", context.Background(), statReq,
+		func(ctx context.Context, r interface{}, others ...interface{}) (interface{}, error) {
+			req, ok := r.(*transfer.GetFileReq)
+			if !ok {
+				return nil, AssertionError
 			}
-			log.Printf("write file error %v", err)
-			return
-		}
-		pos += int64(n)
-	}
 
-	info, err = writer.GetFileInfoAndClose()
+			return transfer.NewFileTransferClient(conn).Stat(ctx, req)
+		},
+		timeout,
+	)
 
 	if err != nil {
-		log.Printf("write file error %v", err)
-		return
+		return nil, err
 	}
 
-	// TODO(hanyh): Save the success event in client metrics.
-	log.Printf("write file ok, file %v, elapse %f second\n", info, time.Since(start).Seconds())
-	return info, nil
-}
-
-// ReadFile reads a file content. Only for test use.
-func ReadFile(info *transfer.FileInfo, timeout time.Duration) (err error) {
-	startTime := time.Now()
-
-	defer func() {
-		if err != nil {
-			log.Printf("read file error, file %s, %v", info.Id, err)
-		} else {
-			log.Printf("read file ok, file %s, elapse %f seconds.", info.Id, time.Since(startTime).Seconds())
-		}
-	}()
-
-	var reader *DFSReader
-	reader, err = GetReader(info.Domain, info.Id, timeout)
-	if err != nil {
-		return
+	if result, ok := t.(*transfer.PutFileRep); ok {
+		return result.File, nil
 	}
 
-	buf := make([]byte, *bufSize)
-	md5 := md5.New()
-	for {
-		var n int
-		n, err = reader.Read(buf)
-		if err == io.EOF {
-			err = nil
-			break
-		}
-		if err != nil {
-			return
-		}
-
-		md5.Write(buf[:n])
-	}
-
-	md5Str := fmt.Sprintf("%x", md5.Sum(nil))
-	if md5Str != info.Md5 {
-		err = fmt.Errorf("md5 not equals")
-	}
-
-	return
+	return nil, AssertionError
 }
 
 // GetReader returns a io.Reader object.
-func GetReader(domain int64, fid string, timeout time.Duration) (*DFSReader, error) {
+func GetReader(fid string, domain int64, timeout time.Duration) (*DFSReader, error) {
 	req := &transfer.GetFileReq{
 		Id:     fid,
 		Domain: domain,
 	}
+
+	info, err := Stat(fid, domain, timeout)
+	if err != nil {
+		return nil, err
+	}
+	// TODO(hanyh): guess expected elapse, and compare with the given timeout.
 
 	result, err := withTimeout("GetReader", context.Background(), req,
 		func(ctx context.Context, r interface{}, others ...interface{}) (interface{}, error) {
@@ -440,7 +383,7 @@ func GetReader(domain int64, fid string, timeout time.Duration) (*DFSReader, err
 		return nil, err
 	}
 
-	info := rep.GetInfo()
+	info = rep.GetInfo()
 	if info == nil {
 		return nil, AssertionError
 	}

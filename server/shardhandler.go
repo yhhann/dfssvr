@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/instrument"
 )
 
 const (
@@ -48,15 +49,21 @@ type ShardHandler struct {
 }
 
 func (sh *ShardHandler) updateStatus(newStatus handlerStatus) {
-	// TODO(hanyh): monitor
-	if sh.status == statusOk && newStatus != statusOk {
-		sh.status = newStatus
-		sh.stopRecoveryRoutine()
+	if sh.status == newStatus {
+		return
 	}
 
-	if sh.status != statusOk && newStatus == statusOk {
-		sh.status = newStatus
+	if newStatus == statusOk {
 		sh.startRecoveryRoutine()
+	} else {
+		sh.stopRecoveryRoutine()
+	}
+	sh.status = newStatus
+
+	// status monitor
+	instrument.StorageStatus <- &instrument.Measurements{
+		Name:  sh.handler.Name(),
+		Value: float64(sh.status),
 	}
 }
 

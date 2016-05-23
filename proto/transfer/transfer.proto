@@ -60,7 +60,7 @@ message GetFileReq {
 
 // The reply message to get file.
 message GetFileRep {
-    oneof result{
+    oneof result {
         Chunk chunk   = 1;
         FileInfo info = 2;
     }
@@ -151,8 +151,11 @@ service FileTransfer{
     rpc GetByMd5 (GetByMd5Req) returns (GetByMd5Rep) {}
 
     // Exist checks existentiality of a file.
-    rpc ExistByMd5(GetByMd5Req) returns (ExistRep) {}
+    rpc ExistByMd5 (GetByMd5Req) returns (ExistRep) {}
 
     // Copy copies a file and returns its fid.
-    rpc Copy(CopyReq) returns (CopyRep) {}
+    rpc Copy (CopyReq) returns (CopyRep) {}
+
+    // Stat gets file info with given fid.
+    rpc Stat (GetFileReq) returns (PutFileRep) {}
 }

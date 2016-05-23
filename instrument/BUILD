@@ -7,5 +7,6 @@ go_library(
   srcs = glob(["*.go"], exclude = ["*_test.go"]),
   deps = [
     "//third-party-go/vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
+    "//third-party-go/vendor/github.com/prometheus/client_model/go:go_default_library",
   ],
 )

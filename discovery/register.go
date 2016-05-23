@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 
 	"jingoal.com/dfs/notice"
-	dpb "jingoal.com/dfs/proto/discovery"
+	"jingoal.com/dfs/proto/discovery"
 	"jingoal.com/dfs/proto/transfer"
 )
 
@@ -20,11 +20,11 @@ const (
 // Register defines an action of underlying service register.
 type Register interface {
 	// Register registers the DfsServer
-	Register(*dpb.DfsServer) error
+	Register(*discovery.DfsServer) error
 
 	// GetDfsServerMap returns the map of DfsServer,
 	// which will be updated in realtime.
-	GetDfsServerMap() map[string]*dpb.DfsServer
+	GetDfsServerMap() map[string]*discovery.DfsServer
 
 	// AddObserver adds an observer for DfsServer node changed.
 	AddObserver(chan<- struct{}, string)
@@ -35,7 +35,7 @@ type Register interface {
 
 // ZKDfsServerRegister implements the Register interface
 type ZKDfsServerRegister struct {
-	serverMap  map[string]*dpb.DfsServer
+	serverMap  map[string]*discovery.DfsServer
 	observers  map[chan<- struct{}]string
 	notice     notice.Notice
 	rwmu       sync.RWMutex
@@ -44,7 +44,7 @@ type ZKDfsServerRegister struct {
 
 // Register registers a DfsServer.
 // If successed, other servers will be notified.
-func (r *ZKDfsServerRegister) Register(s *dpb.DfsServer) error {
+func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 	if atomic.LoadInt32(&r.registered) == 1 {
 		log.Printf("Server %v has registerd already.", s)
 		return nil
@@ -80,7 +80,7 @@ func (r *ZKDfsServerRegister) Register(s *dpb.DfsServer) error {
 				log.Printf("Succeeded to fire %d sendFlag.", len(r.observers))
 
 			case changedServer := <-data: // Get changed server and update serverMap.
-				server := new(dpb.DfsServer)
+				server := new(discovery.DfsServer)
 				if err := json.Unmarshal(changedServer, server); err != nil {
 					log.Printf("Failed to unmarshal json, error: %v", err)
 					continue
@@ -103,14 +103,14 @@ func (r *ZKDfsServerRegister) Register(s *dpb.DfsServer) error {
 }
 
 // GetDfsServerMap returns the map of DfsServer, which be update in realtime.
-func (r *ZKDfsServerRegister) GetDfsServerMap() map[string]*dpb.DfsServer {
+func (r *ZKDfsServerRegister) GetDfsServerMap() map[string]*discovery.DfsServer {
 	r.rwmu.RLock()
 	defer r.rwmu.RUnlock()
 
 	return r.serverMap
 }
 
-func (r *ZKDfsServerRegister) putDfsServerToMap(server *dpb.DfsServer) {
+func (r *ZKDfsServerRegister) putDfsServerToMap(server *discovery.DfsServer) {
 	r.rwmu.Lock()
 	defer r.rwmu.Unlock()
 
@@ -124,7 +124,7 @@ func (r *ZKDfsServerRegister) cleanDfsServerMap() {
 	defer r.rwmu.Unlock()
 
 	initialSize := len(r.serverMap)
-	r.serverMap = make(map[string]*dpb.DfsServer, initialSize)
+	r.serverMap = make(map[string]*discovery.DfsServer, initialSize)
 
 	log.Printf("Succeeded to clean DfsServerMap, %d", initialSize)
 }
@@ -144,7 +144,7 @@ func (r *ZKDfsServerRegister) RemoveObserver(observer chan<- struct{}) {
 func NewZKDfsServerRegister(notice notice.Notice) *ZKDfsServerRegister {
 	r := new(ZKDfsServerRegister)
 	r.notice = notice
-	r.serverMap = make(map[string]*dpb.DfsServer)
+	r.serverMap = make(map[string]*discovery.DfsServer)
 	r.observers = make(map[chan<- struct{}]string)
 
 	return r

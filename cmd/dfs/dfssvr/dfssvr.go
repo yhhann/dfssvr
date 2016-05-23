@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc"
 
 	"jingoal.com/dfs/instrument"
-	"jingoal.com/dfs/server"
 	"jingoal.com/dfs/proto/discovery"
 	"jingoal.com/dfs/proto/transfer"
+	"jingoal.com/dfs/server"
 )
 
 var (
@@ -28,17 +28,12 @@ var (
 	concurrency = flag.Uint("concurrency", 0, "Concurrency")
 	version     = flag.Bool("version", false, "print version")
 
-	buildTime = ""
+	VERSION = "2.0"
 )
 
 func checkFlags() {
-	if buildTime == "" {
-		log.Println("Error: Build time not set!")
-		os.Exit(0)
-	}
-
 	if *version {
-		fmt.Printf("Build time: %s\n", buildTime)
+		fmt.Printf("server version: %s\n", VERSION)
 		os.Exit(0)
 	}
 

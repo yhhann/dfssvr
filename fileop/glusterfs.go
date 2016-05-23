@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"log"
+	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -80,7 +81,7 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 
 	filePath := util.GetFilePath(h.VolBase, info.Domain, oid.Hex(), h.PathVersion, h.PathDigit)
 	dir := filepath.Dir(filePath)
-	if err := h.Volume.MkdirAll(dir, 0755); err != nil {
+	if err := h.Volume.MkdirAll(dir, 0755); err != nil && !os.IsExist(err) {
 		return nil, err
 	}
 
@@ -191,7 +192,6 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error
 	}
 
 	if result {
-		// TODO:(hanyh) log the remove event.
 		filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
 			return result, nil, err

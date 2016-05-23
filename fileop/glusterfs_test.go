@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"jingoal/dfs/metadata"
-	"jingoal/dfs/transfer"
+	"jingoal.com/dfs/metadata"
+	"jingoal.com/dfs/proto/transfer"
 )
 
 func TestGlusterFs(t *testing.T) {

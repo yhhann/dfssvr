@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/md5"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"os"
@@ -16,6 +18,7 @@ import (
 var (
 	chunkSizeInBytes      = flag.Int("chunk-size", 1024, "chunk size in bytes")
 	fileSizeInBytes       = flag.Int("file-size", 1048577, "file size in bytes")
+	bufSize               = flag.Int("buf-size", 8192, "size of buffer to read and write")
 	fileCount             = flag.Int("file-count", 3, "file count")
 	routineCount          = flag.Int("routine-count", 30, "routine count")
 	domain                = flag.Int64("domain", 2, "domain")
@@ -23,17 +26,12 @@ var (
 	finalWaitTimeInSecond = flag.Int("final-wait", 10, "the final wait time in seconds")
 	version               = flag.Bool("version", false, "print version")
 
-	buildTime = ""
+	VERSION = "2.0"
 )
 
 func checkFlags() {
-	if buildTime == "" {
-		log.Println("Error: Build time not set!")
-		os.Exit(0)
-	}
-
 	if *version {
-		fmt.Printf("Build time: %s\n", buildTime)
+		fmt.Printf("client version: %s\n", VERSION)
 		os.Exit(0)
 	}
 }
@@ -76,7 +74,7 @@ func main() {
 	}
 	*chunkSizeInBytes = int(ckSize)
 
-	perfTest()
+	bizLogicTest(1*time.Second, 5*time.Second, 10*time.Second)
 
 	if *finalWaitTimeInSecond < 0 {
 		select {}
@@ -92,12 +90,12 @@ func bizLogicTest(timeoutLong time.Duration, timeoutShort time.Duration, timeout
 	domain := int64(5)
 	payload := make([]byte, fileSize)
 
-	file, err := client.WriteFile(payload, *chunkSizeInBytes, domain, timeoutWrite)
+	file, err := WriteFile(payload, *chunkSizeInBytes, domain, timeoutWrite)
 	if err != nil {
 		log.Printf("Failed to write file, %v", err)
 	}
 
-	anotherFile, err := client.WriteFile(payload[:], *chunkSizeInBytes, domain, timeoutWrite)
+	anotherFile, err := WriteFile(payload[:], *chunkSizeInBytes, domain, timeoutWrite)
 	if err != nil {
 		log.Printf("Failed to write file, %v", err)
 		return
@@ -105,6 +103,13 @@ func bizLogicTest(timeoutLong time.Duration, timeoutShort time.Duration, timeout
 
 	aa := anotherFile.Id
 	exists(aa, domain, timeoutShort)
+
+	info, err := client.Stat(anotherFile.Id, anotherFile.Domain, timeoutShort)
+	if err != nil {
+		log.Printf("File not found %s, %d, %v", anotherFile.Id, anotherFile.Domain, err)
+	}
+
+	log.Printf("Found file %v", info)
 
 	md5 := file.Md5
 
@@ -114,7 +119,7 @@ func bizLogicTest(timeoutLong time.Duration, timeoutShort time.Duration, timeout
 	}
 	log.Printf("md5 %s exists %t", md5, r)
 
-	if err := client.ReadFile(file, timeoutShort); err != nil {
+	if err := ReadFile(file, timeoutShort); err != nil {
 		log.Printf("Failed to read file: %v", err)
 	}
 
@@ -188,7 +193,7 @@ type Result struct {
 }
 
 func perfTest() {
-	timeout := 50000 * time.Millisecond
+	timeout := 1500 * time.Millisecond
 	payload := make([]byte, *fileSizeInBytes)
 
 	jobs := make(chan *Job, *fileCount)
@@ -203,7 +208,7 @@ func perfTest() {
 					break
 				}
 
-				info, err := client.WriteFile(job.payload, job.ckSize, *domain, timeout)
+				info, err := WriteFile(job.payload, job.ckSize, *domain, timeout)
 
 				results <- &Result{
 					inf: info,
@@ -228,12 +233,8 @@ func perfTest() {
 	for w := 0; w < *routineCount; w++ {
 		go func() {
 			for result := range results {
-				if result.err != nil {
-					continue
-				}
-
-				if err := client.ReadFile(result.inf, timeout); err != nil {
-					continue
+				if result.err == nil { // ignore error.
+					ReadFile(result.inf, timeout)
 				}
 				done <- struct{}{}
 			}
@@ -243,4 +244,94 @@ func perfTest() {
 	for m := 0; m < *fileCount; m++ {
 		<-done
 	}
+}
+
+// WriteFile writes a file for given content. Only for test use.
+func WriteFile(payload []byte, chunkSize int, domain int64, timeout time.Duration) (info *transfer.FileInfo, err error) {
+	size := int64(len(payload))
+	fn := fmt.Sprintf("%d", time.Now().UnixNano())
+	start := time.Now()
+	var writer *client.DFSWriter
+
+	writer, err = client.GetWriter(domain, size, fn, "test-biz", "1001", timeout)
+	if err != nil {
+		return
+	}
+	defer writer.Close()
+
+	var pos int64
+	md5 := md5.New()
+	for pos < size {
+		end := pos + int64(chunkSize)
+		if end > size {
+			end = size
+		}
+
+		p := payload[pos:end]
+		md5.Write(p)
+
+		var n int
+		n, err = writer.Write(p)
+		if err != nil {
+			if err == io.EOF {
+				return writer.GetFileInfoAndClose()
+			}
+			log.Printf("write file error %v", err)
+			return
+		}
+		pos += int64(n)
+	}
+
+	info, err = writer.GetFileInfoAndClose()
+
+	if err != nil {
+		log.Printf("write file error %v", err)
+		return
+	}
+
+	// TODO(hanyh): Save the success event in client metrics.
+	log.Printf("write file ok, file %v, elapse %f second\n", info, time.Since(start).Seconds())
+	return info, nil
+}
+
+// ReadFile reads a file content. Only for test use.
+func ReadFile(info *transfer.FileInfo, timeout time.Duration) (err error) {
+	startTime := time.Now()
+
+	defer func() {
+		if err != nil {
+			log.Printf("read file error, file %s, %v", info.Id, err)
+		} else {
+			log.Printf("read file ok, file %s, elapse %f seconds.", info.Id, time.Since(startTime).Seconds())
+		}
+	}()
+
+	var reader *client.DFSReader
+	reader, err = client.GetReader(info.Id, info.Domain, timeout)
+	if err != nil {
+		return
+	}
+
+	buf := make([]byte, *bufSize)
+	md5 := md5.New()
+	for {
+		var n int
+		n, err = reader.Read(buf)
+		if err == io.EOF {
+			err = nil
+			break
+		}
+		if err != nil {
+			return
+		}
+
+		md5.Write(buf[:n])
+	}
+
+	md5Str := fmt.Sprintf("%x", md5.Sum(nil))
+	if md5Str != info.Md5 {
+		err = fmt.Errorf("md5 not equals")
+	}
+
+	return
 }

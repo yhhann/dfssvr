@@ -2,9 +2,11 @@ package instrument
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 type Measurements struct {
@@ -14,7 +16,7 @@ type Measurements struct {
 
 var (
 	metricsAddr    = flag.String("metrics-address", ":8080", "The address to listen on for metrics.")
-	metricsPath    = flag.String("metrics-path", "/metrics", "The path of metrics.")
+	metricsPath    = flag.String("metrics-path", "/dfs-metrics", "The path of metrics.")
 	metricsBufSize = flag.Int("metrics-buf-size", 100, "Size of metrics buffer")
 )
 
@@ -67,21 +69,20 @@ var (
 	)
 	TimeoutHistogram = make(chan *Measurements, *metricsBufSize)
 
-	// rateHistogram instruments rate of file transfer.
-	rateHistogram = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
+	// transferRate instruments rate of file transfer.
+	transferRate = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
 			Namespace: "dfs2_0",
 			Subsystem: "server",
 			Name:      "rate_in_kbit_per_sec",
 			Help:      "transfer rate distributions.",
-			Buckets:   prometheus.ExponentialBuckets(100*1024, 2, 6),
 		},
 		[]string{"service"},
 	)
 	TransferRate = make(chan *Measurements, *metricsBufSize)
 
-	// sizeHistogram instruments size of file.
-	sizeHistogram = prometheus.NewHistogramVec(
+	// fileSize instruments size of file.
+	fileSize = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "dfs2_0",
 			Subsystem: "server",
@@ -99,11 +100,23 @@ var (
 			Namespace: "dfs2_0",
 			Subsystem: "server",
 			Name:      "no_deadline_counter",
-			Help:      "no deadlinecounter.",
+			Help:      "no deadline counter.",
 		},
 		[]string{"service"},
 	)
 	NoDeadlineCounter = make(chan *Measurements, *metricsBufSize)
+
+	// storageStatusGauge instruments status of storage server.
+	storageStatusGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "storage_status",
+			Help:      "Storage status.",
+		},
+		[]string{"service"},
+	)
+	StorageStatus = make(chan *Measurements, *metricsBufSize)
 )
 
 func init() {
@@ -111,9 +124,10 @@ func init() {
 	prometheus.MustRegister(sucDuration)
 	prometheus.MustRegister(failCounter)
 	prometheus.MustRegister(timeoutHistogram)
-	prometheus.MustRegister(rateHistogram)
-	prometheus.MustRegister(sizeHistogram)
+	prometheus.MustRegister(transferRate)
+	prometheus.MustRegister(fileSize)
 	prometheus.MustRegister(noDeadlineCounter)
+	prometheus.MustRegister(storageStatusGauge)
 }
 
 func StartMetrics() {
@@ -130,16 +144,39 @@ func StartMetrics() {
 				case m := <-TimeoutHistogram:
 					timeoutHistogram.WithLabelValues(m.Name).Observe(m.Value)
 				case m := <-TransferRate:
-					rateHistogram.WithLabelValues(m.Name).Observe(m.Value)
+					transferRate.WithLabelValues(m.Name).Observe(m.Value)
 				case m := <-FileSize:
-					sizeHistogram.WithLabelValues(m.Name).Observe(m.Value)
+					fileSize.WithLabelValues(m.Name).Observe(m.Value)
 				case m := <-SuccessDuration:
 					sucDuration.WithLabelValues(m.Name).Observe(m.Value)
+				case m := <-StorageStatus:
+					storageStatusGauge.WithLabelValues(m.Name).Set(m.Value)
 				}
 			}
 		}()
 
-		http.Handle(*metricsPath, prometheus.Handler())
+		http.Handle(*metricsPath, prometheus.UninstrumentedHandler())
 		http.ListenAndServe(*metricsAddr, nil)
 	}()
+}
+
+func GetTransferRateQuantile(method string, quantile float64) (float64, error) {
+	sum, err := transferRate.GetMetricWith(prometheus.Labels{"service": method})
+	if err != nil {
+		return 0, err
+	}
+
+	m := &dto.Metric{}
+	if err = sum.Write(m); err != nil {
+		return 0, err
+	}
+
+	qs := m.GetSummary().GetQuantile()
+	for _, q := range qs {
+		if q.GetQuantile() == quantile {
+			return q.GetValue(), nil
+		}
+	}
+
+	return 0, fmt.Errorf("Not Found")
 }

@@ -1,6 +1,7 @@
 package instrument
 
 import (
+	"log"
 	"math/rand"
 	"testing"
 	"time"
@@ -25,6 +26,17 @@ func Test(t *testing.T) {
 			Value: 1,
 		}
 
+		TransferRate <- &Measurements{
+			Name:  "GetFile",
+			Value: v,
+		}
+
 		time.Sleep(time.Duration(100) * time.Millisecond)
+
+		q, err := GetTransferRateQuantile("GetFile", 0.99)
+		if err != nil {
+			log.Printf("error %v", err)
+		}
+		log.Printf("0.99: %v", q)
 	}
 }

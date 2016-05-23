@@ -19,12 +19,12 @@ import (
 	"google.golang.org/grpc/transport"
 	"gopkg.in/mgo.v2/bson"
 
-	"jingoal.com/dfs/discovery"
+	disc "jingoal.com/dfs/discovery"
 	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/instrument"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/notice"
-	dpb "jingoal.com/dfs/proto/discovery"
+	"jingoal.com/dfs/proto/discovery"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/recovery"
 	"jingoal.com/dfs/util"
@@ -34,11 +34,17 @@ var (
 	logDir            = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
 	heartbeatInterval = flag.Int("hb-interval", 5, "time interval in seconds of heart beat")
 
-	RegisterAddr = flag.String("register-addr", "", "register address")
+	RegisterAddr    = flag.String("register-addr", "", "register address")
+	DefaultDuration = flag.Int("default-duration", 5, "default transfer duration in seconds.")
 )
 
 var (
 	AssertionError = errors.New("assertion error")
+)
+
+var (
+	rRate = 0.0 // kbit/s
+	wRate = 0.0 // kbit/s
 )
 
 const (
@@ -52,13 +58,13 @@ type DFSServer struct {
 	spaceOp  *metadata.SpaceLogOp
 	eventOp  *metadata.EventOp
 	reOp     *recovery.RecoveryEventOp
-	register discovery.Register
+	register disc.Register
 	notice   notice.Notice
 	selector *HandlerSelector
 }
 
 // GetDfsServers gets a list of DfsServer from server.
-func (s *DFSServer) GetDfsServers(req *dpb.GetDfsServersReq, stream dpb.DiscoveryService_GetDfsServersServer) error {
+func (s *DFSServer) GetDfsServers(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
 	clientId := strings.Join([]string{req.GetClient().Id, getPeerAddressString(stream.Context())}, "/")
 
 	observer := make(chan struct{}, 100)
@@ -89,10 +95,10 @@ outLoop:
 	return nil
 }
 
-func (s *DFSServer) sendHeartbeat(req *dpb.GetDfsServersReq, stream dpb.DiscoveryService_GetDfsServersServer) error {
-	rep := &dpb.GetDfsServersRep{
-		GetDfsServerUnion: &dpb.GetDfsServersRep_Hb{
-			Hb: &dpb.Heartbeat{
+func (s *DFSServer) sendHeartbeat(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
+	rep := &discovery.GetDfsServersRep{
+		GetDfsServerUnion: &discovery.GetDfsServersRep_Hb{
+			Hb: &discovery.Heartbeat{
 				Timestamp: time.Now().Unix(),
 			},
 		},
@@ -105,9 +111,9 @@ func (s *DFSServer) sendHeartbeat(req *dpb.GetDfsServersReq, stream dpb.Discover
 	return nil
 }
 
-func (s *DFSServer) sendDfsServerMap(req *dpb.GetDfsServersReq, stream dpb.DiscoveryService_GetDfsServersServer) error {
+func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
 	sm := s.register.GetDfsServerMap()
-	ss := make([]*dpb.DfsServer, 0, len(sm))
+	ss := make([]*discovery.DfsServer, 0, len(sm))
 	for _, pd := range sm {
 		// If we detect a server offline, we set its value to nil,
 		// so we must filter nil values out.
@@ -116,9 +122,9 @@ func (s *DFSServer) sendDfsServerMap(req *dpb.GetDfsServersReq, stream dpb.Disco
 		}
 	}
 
-	rep := &dpb.GetDfsServersRep{
-		GetDfsServerUnion: &dpb.GetDfsServersRep_Sl{
-			Sl: &dpb.DfsServerList{
+	rep := &discovery.GetDfsServersRep{
+		GetDfsServerUnion: &discovery.GetDfsServersRep_Sl{
+			Sl: &discovery.DfsServerList{
 				Server: ss,
 			},
 		},
@@ -205,9 +211,9 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 						}, stream)
 				}
 
-				err := finishRecv(file.GetFileInfo(), stream)
+				inf := file.GetFileInfo()
+				err = finishRecv(file.GetFileInfo(), stream)
 				if err == nil {
-					inf := file.GetFileInfo()
 					slog := &metadata.SpaceLog{
 						Domain:    inf.Domain,
 						Uid:       fmt.Sprintf("%d", inf.User),
@@ -232,7 +238,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 					}
 					s.eventOp.SaveEvent(event)
 
-					rate := int64(length) * 8 * 1e6 / nsecs
+					rate := int64(length) * 8 * 1e6 / nsecs // in kbit/s
 					instrument.FileSize <- &instrument.Measurements{
 						Name:  serviceName,
 						Value: float64(length),
@@ -246,6 +252,8 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 						inf, nsecs, rate)
 					return nil
 				}
+
+				(*handler).Remove(inf.Id, inf.Domain)
 			}
 			if err != nil {
 				logInf := reqInfo
@@ -258,10 +266,20 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 
 			if file == nil {
 				reqInfo = req.GetInfo()
-				log.Printf("PutFile: file info: %v, client: %s", reqInfo, peerAddr)
+				log.Printf("%s, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
 				if reqInfo == nil {
 					log.Printf("recv error: no file info")
 					return errors.New("recv error: no file info")
+				}
+
+				// check timeout, for test.
+				if dl, ok := getDeadline(stream); ok {
+					given := dl.Sub(startTime)
+					expected, err := checkTimeout(reqInfo.Size, wRate, given)
+					if err != nil {
+						log.Printf("%s, Timeout will happen, expected %v, given %v, return early", serviceName, expected, given)
+						return err
+					}
 				}
 
 				handler, err = s.selector.getDFSFileHandlerForWrite(reqInfo.Domain)
@@ -357,6 +375,16 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 		}
 		defer file.Close()
 
+		// check timeout, for test.
+		if dl, ok := getDeadline(stream); ok {
+			given := dl.Sub(startTime)
+			expected, err := checkTimeout(file.GetFileInfo().Size, rRate, given)
+			if err != nil {
+				log.Printf("%s, Timeout will happen, expected %v, given %v, return immediately", serviceName, expected, given)
+				return err
+			}
+		}
+
 		// First, we send file info.
 		err = stream.Send(&transfer.GetFileRep{
 			Result: &transfer.GetFileRep_Info{
@@ -374,7 +402,7 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 			length, err := file.Read(b)
 			if err == io.EOF || (err == nil && length == 0) {
 				nsecs := time.Since(startTime).Nanoseconds()
-				rate := off * 8 * 1e6 / nsecs
+				rate := off * 8 * 1e6 / nsecs // in kbit/s
 
 				instrument.FileSize <- &instrument.Measurements{
 					Name:  serviceName,
@@ -931,6 +959,56 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 	return nil, AssertionError
 }
 
+// Stat gets file info with given fid.
+func (s *DFSServer) Stat(ctx context.Context, req *transfer.GetFileReq) (*transfer.PutFileRep, error) {
+	serviceName := "Stat"
+	peerAddr := getPeerAddressString(ctx)
+	log.Printf("service: %s, client: %s, %v", serviceName, peerAddr, req)
+
+	if len(req.Id) == 0 || req.Domain <= 0 {
+		return nil, fmt.Errorf("invalid request [%v]", req)
+	}
+
+	t, err := withDeadline(serviceName, ctx, req, func(c interface{}, r interface{}) (interface{}, error) {
+		req, ok := r.(*transfer.GetFileReq)
+		if !ok {
+			return nil, AssertionError
+		}
+
+		nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
+		if err != nil {
+			log.Printf("Failed to get handler for read, error: %v", err)
+			return nil, err
+		}
+
+		var m fileop.DFSFileHandler
+		if mh != nil {
+			m = *mh
+		}
+
+		_, file, err := searchFile(req.Id, req.Domain, *nh, m)
+		if err != nil {
+			return nil, err
+		}
+		file.Close()
+
+		return &transfer.PutFileRep{
+			File: file.GetFileInfo(),
+		}, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	result, ok := t.(*transfer.PutFileRep)
+	if ok {
+		return result, nil
+	}
+
+	return nil, AssertionError
+}
+
 func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 	log.Printf("Start to register self[%s,%s]", name, lsnAddr)
 
@@ -939,10 +1017,10 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 		return err
 	}
 
-	if err := s.register.Register(&dpb.DfsServer{
+	if err := s.register.Register(&discovery.DfsServer{
 		Id:     name,
 		Uri:    rAddr,
-		Status: dpb.DfsServer_ONLINE,
+		Status: discovery.DfsServer_ONLINE,
 	}); err != nil {
 		return err
 	}
@@ -961,7 +1039,7 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	log.Printf("Try to start DFS server %v on %v\n", name, lsnAddr.String())
 
 	zk := notice.NewDfsZK(strings.Split(zkAddrs, ","), time.Duration(zkTimeout)*time.Millisecond)
-	r := discovery.NewZKDfsServerRegister(zk)
+	r := disc.NewZKDfsServerRegister(zk)
 	server := DFSServer{
 		register: r,
 		notice:   zk,
@@ -1009,9 +1087,49 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 
 	server.selector.startShardNoticeRoutine()
 
+	startRateCheckRoutine()
+
 	log.Printf("Succeeded to start DFS server %v.", name)
 
 	return &server, nil
+}
+
+func startRateCheckRoutine() {
+	go func() {
+		// refresh rate every 5 seconds.
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				r, err := instrument.GetTransferRateQuantile("GetFile", 0.99)
+				if err == nil && r > 0 { // err != nil ignored
+					rRate = r
+				}
+
+				w, err := instrument.GetTransferRateQuantile("PutFile", 0.99)
+				if err == nil && w > 0 { // err != nil ignored
+					wRate = w
+				}
+			}
+		}
+	}()
+}
+
+func checkTimeout(size int64, rate float64, given time.Duration) (time.Duration, error) {
+	if rate != 0.0 && size != 0 {
+		rate := int64(rate * 1024) // convert unit of rate from kbit/s to bit/s
+		size := size * 8           // convert unit of size from bytes to bits
+		need := size / rate
+		need *= 1e9
+		if given.Nanoseconds() < need {
+			log.Printf("DEBUG: Deadline exceeded: rate %f, size %d, need %f, given %f", rate, size, need, given.Nanoseconds())
+			return time.Duration(need), context.DeadlineExceeded
+		}
+	}
+
+	return given, nil
 }
 
 func getPeerAddressString(ctx context.Context) (peerAddr string) {
@@ -1105,22 +1223,20 @@ func withDeadline(serviceName string, env interface{}, req interface{}, f func(c
 
 	defer func() {
 		elapse := time.Since(startTime)
-		nsecs := elapse.Nanoseconds()
 		me := &instrument.Measurements{
 			Name:  serviceName,
-			Value: float64(nsecs),
+			Value: float64(elapse.Nanoseconds()),
 		}
 
-		secs := elapse.Seconds()
 		if se, ok := e.(transport.StreamError); ok && (se.Code == codes.DeadlineExceeded) || (e == context.DeadlineExceeded) {
 			instrument.TimeoutHistogram <- me
-			glog.Infof("%s, deadline exceeded, %v seconds.", serviceName, secs)
+			glog.Infof("%s, deadline exceeded, %v seconds.", serviceName, elapse.Seconds())
 		} else if e != nil {
 			instrument.FailedCounter <- me
-			glog.Infof("%s error %v, in %v seconds.", serviceName, e, secs)
+			glog.Infof("%s error %v, in %v seconds.", serviceName, e, elapse.Seconds())
 		} else {
 			instrument.SuccessDuration <- me
-			glog.Infof("%s finished in %v seconds.", serviceName, secs)
+			glog.Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
 		}
 
 		exit(serviceName)

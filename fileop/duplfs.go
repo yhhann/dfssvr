@@ -223,7 +223,6 @@ func (duplfs *DuplFs) Delete(dId string) (bool, error) {
 		}
 	}
 
-	// TODO(hanyh): Log this delete event for audit.
 	return result, nil
 }
 
