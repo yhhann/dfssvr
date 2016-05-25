@@ -172,13 +172,6 @@ func (s *DFSServer) NegotiateChunkSize(ctx context.Context, req *transfer.Negoti
 	return nil, AssertionError
 }
 
-func finishRecv(info *transfer.FileInfo, stream transfer.FileTransfer_PutFileServer) error {
-	return stream.SendAndClose(
-		&transfer.PutFileRep{
-			File: info,
-		})
-}
-
 // PutFile puts a file into server.
 func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 	serviceName := "PutFile"
@@ -205,55 +198,61 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 				if file == nil {
 					// TODO(hanyh): save an event for create file error.
 					log.Println("Failed to save file: no file info")
-					return finishRecv(
-						&transfer.FileInfo{
-							Id: "recv error: no file info",
-						}, stream)
+					return stream.SendAndClose(
+						&transfer.PutFileRep{
+							File: &transfer.FileInfo{
+								Id: "recv error: no file info",
+							},
+						})
 				}
 
 				inf := file.GetFileInfo()
-				err = finishRecv(file.GetFileInfo(), stream)
-				if err == nil {
-					slog := &metadata.SpaceLog{
-						Domain:    inf.Domain,
-						Uid:       fmt.Sprintf("%d", inf.User),
-						Fid:       inf.Id,
-						Biz:       inf.Biz,
-						Size:      int64(length),
-						Timestamp: time.Now(),
-						Type:      metadata.CreateType.String(),
-					}
-					s.spaceOp.SaveSpaceLog(slog)
-
-					nsecs := time.Since(startTime).Nanoseconds()
-					// save a event for create file ok.
-					event := &metadata.Event{
-						EType:     metadata.SucCreate,
-						Timestamp: util.GetTimeInMilliSecond(),
-						Domain:    inf.Domain,
-						Fid:       inf.Id,
-						Elapse:    nsecs,
-						Description: fmt.Sprintf("%s[PutFile], client: %s, dst: %s, size: %d",
-							metadata.SucCreate.String(), peerAddr, (*handler).Name(), length),
-					}
-					s.eventOp.SaveEvent(event)
-
-					rate := int64(length) * 8 * 1e6 / nsecs // in kbit/s
-					instrument.FileSize <- &instrument.Measurements{
-						Name:  serviceName,
-						Value: float64(length),
-					}
-					instrument.TransferRate <- &instrument.Measurements{
-						Name:  serviceName,
-						Value: float64(rate),
-					}
-
-					log.Printf("Succeeded to save file: %s, elapse %d, rate %d kbit/s\n",
-						inf, nsecs, rate)
-					return nil
+				err = stream.SendAndClose(
+					&transfer.PutFileRep{
+						File: inf,
+					})
+				if err != nil {
+					(*handler).Remove(inf.Id, inf.Domain)
+					return err
 				}
 
-				(*handler).Remove(inf.Id, inf.Domain)
+				slog := &metadata.SpaceLog{
+					Domain:    inf.Domain,
+					Uid:       fmt.Sprintf("%d", inf.User),
+					Fid:       inf.Id,
+					Biz:       inf.Biz,
+					Size:      int64(length),
+					Timestamp: time.Now(),
+					Type:      metadata.CreateType.String(),
+				}
+				s.spaceOp.SaveSpaceLog(slog)
+
+				nsecs := time.Since(startTime).Nanoseconds()
+				// save a event for create file ok.
+				event := &metadata.Event{
+					EType:     metadata.SucCreate,
+					Timestamp: util.GetTimeInMilliSecond(),
+					Domain:    inf.Domain,
+					Fid:       inf.Id,
+					Elapse:    nsecs,
+					Description: fmt.Sprintf("%s[PutFile], client: %s, dst: %s, size: %d",
+						metadata.SucCreate.String(), peerAddr, (*handler).Name(), length),
+				}
+				s.eventOp.SaveEvent(event)
+
+				rate := int64(length) * 8 * 1e6 / nsecs // in kbit/s
+				instrument.FileSize <- &instrument.Measurements{
+					Name:  serviceName,
+					Value: float64(length),
+				}
+				instrument.TransferRate <- &instrument.Measurements{
+					Name:  serviceName,
+					Value: float64(rate),
+				}
+
+				log.Printf("Succeeded to save file: %s, elapse %d, rate %d kbit/s\n",
+					inf, nsecs, rate)
+				return nil
 			}
 			if err != nil {
 				logInf := reqInfo
@@ -272,28 +271,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 					return errors.New("recv error: no file info")
 				}
 
-				// check timeout, for test.
-				if dl, ok := getDeadline(stream); ok {
-					given := dl.Sub(startTime)
-					expected, err := checkTimeout(reqInfo.Size, wRate, given)
-					if err != nil {
-						log.Printf("%s, Timeout will happen, expected %v, given %v, return early", serviceName, expected, given)
-						return err
-					}
-				}
-
-				handler, err = s.selector.getDFSFileHandlerForWrite(reqInfo.Domain)
-				if err != nil {
-					log.Printf("get handler for write error: %v", err)
-					return err
-				}
-
-				file, err = (*handler).Create(reqInfo)
-				if err != nil {
-					log.Printf("Create error, file: %s, error: %v\n", reqInfo, err)
-					return err
-				}
-
+				file, handler, err = s.createFile(reqInfo, stream, startTime)
 				defer file.Close()
 			}
 
@@ -305,6 +283,31 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 			length += csize
 		}
 	})
+}
+
+func (s *DFSServer) createFile(reqInfo *transfer.FileInfo, stream transfer.FileTransfer_PutFileServer, startTime time.Time) (file fileop.DFSFile, handler *fileop.DFSFileHandler, err error) {
+	// check timeout, for test.
+	if dl, ok := getDeadline(stream); ok {
+		given := dl.Sub(startTime)
+		_, err = checkTimeout(reqInfo.Size, wRate, given)
+		if err != nil {
+			return
+		}
+	}
+
+	handler, err = s.selector.getDFSFileHandlerForWrite(reqInfo.Domain)
+	if err != nil {
+		log.Printf("get handler for write error: %v", err)
+		return
+	}
+
+	file, err = (*handler).Create(reqInfo)
+	if err != nil {
+		log.Printf("Create error, file: %s, error: %v\n", reqInfo, err)
+		return
+	}
+
+	return
 }
 
 func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFileHandler, fileop.DFSFile, error) {
