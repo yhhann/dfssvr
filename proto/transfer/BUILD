@@ -6,7 +6,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 genproto_go(
   name = "transfer_proto",
-  src = "transfer.proto",
+  srcs = ["transfer.proto"],
   has_service = True,
 )
 

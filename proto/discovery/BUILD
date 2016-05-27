@@ -5,7 +5,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 genproto_go(
   name = "discovery_proto",
-  src = "discovery.proto",
+  srcs = ["discovery.proto"],
   has_service = True,
 )
 
