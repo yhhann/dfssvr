@@ -17,15 +17,15 @@ import (
 )
 
 var (
-	healthCheckInterval = flag.Int("health-check-interval", 30, "health check interval in seconds")
-	healthCheckTimeout  = flag.Int("health-check-timeout", 5, "health check timeout in seconds")
+	HealthCheckInterval = flag.Int("health-check-interval", 30, "health check interval in seconds.")
+	HealthCheckTimeout  = flag.Int("health-check-timeout", 5, "health check timeout in seconds.")
+	HealthCheckManually = flag.Bool("health-check-manually", false, "true for checking health manually.")
 
-	recoveryBufferSize = flag.Int("recovery-buffer-size", 100000, "size of channel for each DFSFileHandler")
-	recoveryInterval   = flag.Int("recovery-interval", 60, "interval in seconds for recovery event inspection")
-	recoveryBatchSize  = flag.Int("recovery-batch-size", 100000, "batch size for recovery event inspection")
+	recoveryBufferSize = flag.Int("recovery-buffer-size", 100000, "size of channel for each DFSFileHandler.")
+	recoveryInterval   = flag.Int("recovery-interval", 60, "interval in seconds for recovery event inspection.")
+	recoveryBatchSize  = flag.Int("recovery-batch-size", 100000, "batch size for recovery event inspection.")
 
-	segmentDeletion     = flag.Bool("segment-deletion", false, "true for remove segment, default is false.")
-	healthCheckManually = flag.Bool("health-check-manually", true, "true for checking health manually, default is true.")
+	segmentDeletion = flag.Bool("segment-deletion", false, "true for remove segment.")
 )
 
 // FileRecoveryInfo represents the information for file recovery.
@@ -193,7 +193,7 @@ func (hs *HandlerSelector) getDFSFileHandler(domain int64) (*fileop.DFSFileHandl
 // if status is offline, degrade.
 func (hs *HandlerSelector) checkOrDegrade(handler *fileop.DFSFileHandler) (*fileop.DFSFileHandler, error) {
 	if handler == nil { // Check for nil.
-		return nil, fmt.Errorf("Failed to degrade: handler is nil")
+		return nil, fmt.Errorf("handler is nil")
 	}
 
 	if status, ok := hs.getHandlerStatus(*handler); ok && status == statusOk {
@@ -202,11 +202,11 @@ func (hs *HandlerSelector) checkOrDegrade(handler *fileop.DFSFileHandler) (*file
 
 	dh := hs.degradeShardHandler.handler
 	if hs.degradeShardHandler.status == statusOk {
-		log.Printf("DEGRADE!!! %v ==> %v", (*handler).Name(), dh.Name())
+		log.Printf("!!! server %s degrade to %s", (*handler).Name(), dh.Name())
 		return &dh, nil
 	}
 
-	return nil, fmt.Errorf("Failed to degrade: %v", (*handler).Name())
+	return nil, fmt.Errorf("'%s' and '%s' not reachable", (*handler).Name(), dh.Name())
 }
 
 // getDfsFileHandlerForWrite returns perfect file handlers to write file.
@@ -250,7 +250,7 @@ func (hs *HandlerSelector) updateHandlerStatus(h fileop.DFSFileHandler, status h
 }
 
 func (hs *HandlerSelector) getHandlerStatus(h fileop.DFSFileHandler) (handlerStatus, bool) {
-	if *healthCheckManually {
+	if *HealthCheckManually {
 		// TODO(hanyh): update status from db.
 		return statusOk, true
 	}
@@ -469,7 +469,7 @@ func findPerfectSegment(segments []*metadata.Segment, domain int64) (int, *metad
 // If detection times out, return false.
 func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
 	running := make(chan bool)
-	ticker := time.NewTicker(time.Duration(*healthCheckTimeout) * time.Second)
+	ticker := time.NewTicker(time.Duration(*HealthCheckTimeout) * time.Second)
 	defer func() {
 		ticker.Stop()
 		close(running)

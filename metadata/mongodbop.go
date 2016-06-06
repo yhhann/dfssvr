@@ -3,7 +3,6 @@ package metadata
 import (
 	"errors"
 	"flag"
-	"time"
 
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -29,7 +28,11 @@ type MongoMetaOp struct {
 }
 
 func (op *MongoMetaOp) execute(target func(session *mgo.Session) error) error {
-	return Execute(op.session, target)
+	return ExecuteWithClone(op.session, target)
+}
+
+func (op *MongoMetaOp) Close() {
+	op.session.Close()
 }
 
 // SaveSegment saves a Segment object into "chunks" collection.
@@ -139,7 +142,7 @@ func (op *MongoMetaOp) FindAllShards() []*Shard {
 // NewMongoMetaOp creates a MongoMetaOp object with given mongodb uri
 // and database name.
 func NewMongoMetaOp(dbName string, uri string) (*MongoMetaOp, error) {
-	session, err := OpenMongoSession(uri)
+	session, err := CopySession(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -151,28 +154,15 @@ func NewMongoMetaOp(dbName string, uri string) (*MongoMetaOp, error) {
 	}, nil
 }
 
-// OpenMongoSession returns a session by given mongodb uri.
-func OpenMongoSession(uri string) (*mgo.Session, error) {
-	info, err := mgo.ParseURL(uri)
-	if err != nil {
-		return nil, err
-	}
-
-	info.Timeout = time.Duration(*MongoTimeout) * time.Second
-	session, err := mgo.DialWithInfo(info)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(info.Addrs) > 1 {
-		session.SetSafe(&mgo.Safe{WMode: "majority"})
-	}
-
-	return session, nil
-}
-
 func Execute(session *mgo.Session, target func(*mgo.Session) error) error {
 	s := session.Copy()
+	defer s.Close()
+
+	return target(s)
+}
+
+func ExecuteWithClone(session *mgo.Session, target func(*mgo.Session) error) error {
+	s := session.Clone()
 	defer s.Close()
 
 	return target(s)

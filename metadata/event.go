@@ -81,6 +81,14 @@ type EventOp struct {
 	session *mgo.Session
 }
 
+func (op *EventOp) execute(target func(session *mgo.Session) error) error {
+	return ExecuteWithClone(op.session, target)
+}
+
+func (op *EventOp) Close() {
+	op.session.Close()
+}
+
 // SaveEvent saves an event into database.
 // If id of the saved object is nil, it will be set to a new ObjectId.
 func (op *EventOp) SaveEvent(e *Event) error {
@@ -90,14 +98,14 @@ func (op *EventOp) SaveEvent(e *Event) error {
 	if !e.Id.Valid() {
 		return ObjectIdInvalidError
 	}
-	return Execute(op.session, func(session *mgo.Session) error {
+	return op.execute(func(session *mgo.Session) error {
 		return session.DB(op.dbName).C(EVENT_COL).Insert(*e)
 	})
 }
 
 // RemoveEvent removes an event by its id.
 func (op *EventOp) RemoveEvent(id bson.ObjectId) error {
-	return Execute(op.session, func(session *mgo.Session) error {
+	return op.execute(func(session *mgo.Session) error {
 		return session.DB(op.dbName).C(EVENT_COL).RemoveId(id)
 	})
 }
@@ -105,7 +113,7 @@ func (op *EventOp) RemoveEvent(id bson.ObjectId) error {
 // LookupEventById finds an event by its id.
 func (op *EventOp) LookupEventById(id bson.ObjectId) (*Event, error) {
 	e := new(Event)
-	if err := Execute(op.session, func(session *mgo.Session) error {
+	if err := op.execute(func(session *mgo.Session) error {
 		return session.DB(op.dbName).C(EVENT_COL).FindId(id).One(e)
 	}); err != nil {
 		return nil, err
@@ -125,7 +133,7 @@ func (op *EventOp) GetEvents(eventType string, threadId string, start int64, end
 	}
 
 	var iter *mgo.Iter
-	Execute(op.session, func(session *mgo.Session) error {
+	op.execute(func(session *mgo.Session) error {
 		iter = session.DB(op.dbName).C(EVENT_COL).Find(q).Iter()
 		return nil
 	})
@@ -136,7 +144,7 @@ func (op *EventOp) GetEvents(eventType string, threadId string, start int64, end
 // NewEvnetOp creates a EventOp object with given mongodb uri
 // and database name.
 func NewEventOp(dbName string, uri string) (*EventOp, error) {
-	session, err := OpenMongoSession(uri)
+	session, err := CopySession(uri)
 	if err != nil {
 		return nil, err
 	}

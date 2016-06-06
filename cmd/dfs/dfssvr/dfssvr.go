@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -28,12 +30,13 @@ var (
 	concurrency = flag.Uint("concurrency", 0, "Concurrency")
 	version     = flag.Bool("version", false, "print version")
 
-	VERSION = "2.0"
+	VERSION   = "2.0"
+	buildTime = ""
 )
 
 func checkFlags() {
 	if *version {
-		fmt.Printf("server version: %s\n", VERSION)
+		fmt.Printf("server version: %s-%s\n", VERSION, buildTime)
 		os.Exit(0)
 	}
 
@@ -67,13 +70,19 @@ func setupLog() {
 		return
 	}
 
-	if _, err := os.Stat(*logDir); os.IsNotExist(err) {
-		if err = os.MkdirAll(*logDir, 0700); err != nil {
+	logD := *logDir
+	ports := strings.Split(*lsnAddr, ":")
+	if len(ports) > 1 {
+		logD = filepath.Join(*logDir, ports[1])
+	}
+
+	if _, err := os.Stat(logD); os.IsNotExist(err) {
+		if err = os.MkdirAll(logD, 0700); err != nil {
 			log.Fatalf("Failed to create log directory: %v", err)
 		}
 	}
 
-	f, err := os.OpenFile(filepath.Join(*logDir, "dfs-server.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	f, err := os.OpenFile(filepath.Join(logD, "dfs-server.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("Error opening log file: %v", err)
 	}
@@ -96,9 +105,16 @@ func main() {
 	}
 	log.Printf("DFSServer listened on %s", lis.Addr().String())
 
-	cs, err := server.NewDFSServer(lis.Addr(), *name, *shardDbName, *shardDbUri, *zkAddr, *timeout)
-	if err != nil {
-		log.Fatalf("create NewDFSServer failed%v", err)
+	var dfsServer *server.DFSServer
+	for {
+		dfsServer, err = server.NewDFSServer(lis.Addr(), *name, *shardDbName, *shardDbUri, *zkAddr, *timeout)
+		if err != nil {
+			log.Printf("Failed to create DFS Server: %v, try again.", err)
+			time.Sleep(time.Duration(*server.HealthCheckInterval) * time.Second)
+			continue
+		}
+
+		break
 	}
 
 	sopts := []grpc.ServerOption{
@@ -113,8 +129,8 @@ func main() {
 	grpcServer := grpc.NewServer(sopts...)
 	defer grpcServer.Stop()
 
-	transfer.RegisterFileTransferServer(grpcServer, cs)
-	discovery.RegisterDiscoveryServiceServer(grpcServer, cs)
+	transfer.RegisterFileTransferServer(grpcServer, dfsServer)
+	discovery.RegisterDiscoveryServiceServer(grpcServer, dfsServer)
 
 	grpcServer.Serve(lis)
 }

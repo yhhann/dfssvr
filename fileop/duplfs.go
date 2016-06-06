@@ -18,12 +18,11 @@ var (
 )
 
 type DuplFs struct {
-	gridfs *mgo.GridFS
-	op     *metadata.DuplicateOp
+	*metadata.DuplicateOp
 }
 
 // FindByMd5 finds a gridfs file by its md5.
-func (duplfs *DuplFs) FindByMd5(md5 string, domain int64, size int64) (*mgo.GridFile, error) {
+func (duplfs *DuplFs) FindByMd5(gridfs *mgo.GridFS, md5 string, domain int64, size int64) (*mgo.GridFile, error) {
 	file := new(mgo.GridFile)
 
 	query := bson.D{
@@ -32,10 +31,10 @@ func (duplfs *DuplFs) FindByMd5(md5 string, domain int64, size int64) (*mgo.Grid
 		{"length", size},
 	}
 
-	iter := duplfs.gridfs.Find(query).Sort("-uploadDate").Iter()
+	iter := gridfs.Find(query).Sort("-uploadDate").Iter()
 	defer iter.Close()
 
-	if ok := duplfs.gridfs.OpenNext(iter, &file); ok {
+	if ok := gridfs.OpenNext(iter, &file); ok {
 		return file, nil
 	}
 
@@ -43,7 +42,7 @@ func (duplfs *DuplFs) FindByMd5(md5 string, domain int64, size int64) (*mgo.Grid
 }
 
 // Find finds a file with given id.
-func (duplfs *DuplFs) Find(givenId string) (f *mgo.GridFile, err error) {
+func (duplfs *DuplFs) Find(gridfs *mgo.GridFS, givenId string) (f *mgo.GridFile, err error) {
 	defer func() {
 		if err == mgo.ErrNotFound {
 			err = FileNotFound
@@ -55,25 +54,24 @@ func (duplfs *DuplFs) Find(givenId string) (f *mgo.GridFile, err error) {
 		return
 	}
 
-	dupl, err := duplfs.op.LookupDuplById(*realId)
+	dupl, err := duplfs.LookupDuplById(*realId)
 	if err != nil {
-		log.Printf("dupl not found: %s, error: %v", givenId, err)
 		return
 	}
 	if dupl != nil {
-		f, err = duplfs.gridfs.OpenId(dupl.Ref)
+		f, err = gridfs.OpenId(dupl.Ref)
 		return
 	}
 
 	if !util.IsDuplId(givenId) {
 		var ref *metadata.Ref
-		ref, err = duplfs.op.LookupRefById(*realId)
+		ref, err = duplfs.LookupRefById(*realId)
 		if err != nil {
 			log.Printf("ref not found: %s, error: %v", givenId, err)
 			return
 		}
 		if ref == nil {
-			f, err = duplfs.gridfs.OpenId(*realId)
+			f, err = gridfs.OpenId(*realId)
 			return
 		}
 	}
@@ -82,14 +80,14 @@ func (duplfs *DuplFs) Find(givenId string) (f *mgo.GridFile, err error) {
 	return
 }
 
-func (duplfs *DuplFs) search(fid string) (*mgo.GridFile, error) {
+func (duplfs *DuplFs) search(gridfs *mgo.GridFS, fid string) (*mgo.GridFile, error) {
 	if !util.IsDuplId(fid) {
 		givenId, err := hexString2ObjectId(fid)
 		if err != nil {
 			return nil, err
 		}
 
-		return duplfs.gridfs.OpenId(givenId)
+		return gridfs.OpenId(givenId)
 	}
 
 	rId := util.GetRealId(fid)
@@ -98,7 +96,7 @@ func (duplfs *DuplFs) search(fid string) (*mgo.GridFile, error) {
 		return nil, err
 	}
 
-	dupl, err := duplfs.op.LookupDuplById(*realId)
+	dupl, err := duplfs.LookupDuplById(*realId)
 	if err != nil {
 		return nil, err
 	}
@@ -106,17 +104,17 @@ func (duplfs *DuplFs) search(fid string) (*mgo.GridFile, error) {
 		return nil, FileNotFound
 	}
 
-	return duplfs.gridfs.OpenId(dupl.Ref)
+	return gridfs.OpenId(dupl.Ref)
 }
 
 // Duplicate duplicates an entry for a file, not the content.
-func (duplfs *DuplFs) Duplicate(oid string) (string, error) {
-	return duplfs.DuplicateWithId(oid, "", time.Now())
+func (duplfs *DuplFs) Duplicate(gridfs *mgo.GridFS, oid string) (string, error) {
+	return duplfs.DuplicateWithId(gridfs, oid, "", time.Now())
 }
 
 // DuplicateWithId duplicates an entry for a file with given file id, not the content.
-func (duplfs *DuplFs) DuplicateWithId(oid string, dupId string, uploadDate time.Time) (string, error) {
-	primary, err := duplfs.search(oid)
+func (duplfs *DuplFs) DuplicateWithId(gridfs *mgo.GridFS, oid string, dupId string, uploadDate time.Time) (string, error) {
+	primary, err := duplfs.search(gridfs, oid)
 	if err != nil {
 		return "", err
 	}
@@ -126,7 +124,7 @@ func (duplfs *DuplFs) DuplicateWithId(oid string, dupId string, uploadDate time.
 		return "", fmt.Errorf("primary id invalided: %v", primary.Id())
 	}
 
-	ref, err := duplfs.op.LookupRefById(pid)
+	ref, err := duplfs.LookupRefById(pid)
 	if err != nil {
 		return "", err
 	}
@@ -136,7 +134,7 @@ func (duplfs *DuplFs) DuplicateWithId(oid string, dupId string, uploadDate time.
 			Length: primary.Size(),
 			RefCnt: 1,
 		}
-		if err := duplfs.op.SaveRef(ref); err != nil {
+		if err := duplfs.SaveRef(ref); err != nil {
 			return "", err
 		}
 
@@ -145,11 +143,11 @@ func (duplfs *DuplFs) DuplicateWithId(oid string, dupId string, uploadDate time.
 			Ref:    ref.Id,
 			Length: primary.Size(),
 		}
-		if err := duplfs.op.SaveDupl(&nDupl); err != nil {
+		if err := duplfs.SaveDupl(&nDupl); err != nil {
 			return "", err
 		}
 	} else {
-		_, err := duplfs.op.IncRefCnt(ref.Id)
+		_, err := duplfs.IncRefCnt(ref.Id)
 		if err != nil {
 			return "", err
 		}
@@ -170,7 +168,7 @@ func (duplfs *DuplFs) DuplicateWithId(oid string, dupId string, uploadDate time.
 
 	dupl.UploadDate = uploadDate
 
-	if err := duplfs.op.SaveDupl(&dupl); err != nil {
+	if err := duplfs.SaveDupl(&dupl); err != nil {
 		return "", err
 	}
 
@@ -179,7 +177,7 @@ func (duplfs *DuplFs) DuplicateWithId(oid string, dupId string, uploadDate time.
 
 // Delete deletes a duplication or a real file.
 // It returns true when deletes a real file successfully.
-func (duplfs *DuplFs) Delete(dId string) (bool, error) {
+func (duplfs *DuplFs) Delete(gridfs *mgo.GridFS, dId string) (bool, error) {
 	var status int64
 	var result bool
 
@@ -188,7 +186,7 @@ func (duplfs *DuplFs) Delete(dId string) (bool, error) {
 		return false, err
 	}
 
-	dupl, err := duplfs.op.LookupDuplById(*realId)
+	dupl, err := duplfs.LookupDuplById(*realId)
 	if err != nil {
 		return false, err
 	}
@@ -197,24 +195,24 @@ func (duplfs *DuplFs) Delete(dId string) (bool, error) {
 		if util.IsDuplId(dId) {
 			status = -10000
 		} else {
-			ref, err := duplfs.op.LookupRefById(*realId)
+			ref, err := duplfs.LookupRefById(*realId)
 			if err != nil {
 				return false, err
 			}
 			if ref == nil {
-				duplfs.gridfs.RemoveId(realId)
+				gridfs.RemoveId(realId)
 				result = true
 			} else {
 				status = -20000
 			}
 		}
 	} else {
-		err := duplfs.op.RemoveDupl(dupl.Id)
+		err := duplfs.RemoveDupl(dupl.Id)
 		if err != nil {
 			return false, err
 		}
 
-		status, err = duplfs.decAndRemove(dupl.Ref)
+		status, err = duplfs.decAndRemove(gridfs, dupl.Ref)
 		if err != nil {
 			return false, err
 		}
@@ -226,11 +224,11 @@ func (duplfs *DuplFs) Delete(dId string) (bool, error) {
 	return result, nil
 }
 
-func (duplfs *DuplFs) decAndRemove(id bson.ObjectId) (int64, error) {
-	ref, err := duplfs.op.DecRefCnt(id)
+func (duplfs *DuplFs) decAndRemove(gridfs *mgo.GridFS, id bson.ObjectId) (int64, error) {
+	ref, err := duplfs.DecRefCnt(id)
 	if err == mgo.ErrNotFound {
-		duplfs.op.RemoveRef(id)
-		duplfs.gridfs.RemoveId(id)
+		duplfs.RemoveRef(id)
+		gridfs.RemoveId(id)
 		return -1, nil
 	}
 	if err != nil {
@@ -238,17 +236,16 @@ func (duplfs *DuplFs) decAndRemove(id bson.ObjectId) (int64, error) {
 	}
 
 	if ref.RefCnt < 0 {
-		duplfs.op.RemoveRef(id)
-		duplfs.gridfs.RemoveId(id)
+		duplfs.RemoveRef(id)
+		gridfs.RemoveId(id)
 	}
 
 	return ref.RefCnt, nil
 }
 
-func NewDuplFs(gridfs *mgo.GridFS, dOp *metadata.DuplicateOp) *DuplFs {
+func NewDuplFs(dOp *metadata.DuplicateOp) *DuplFs {
 	duplfs := &DuplFs{
-		gridfs: gridfs,
-		op:     dOp,
+		DuplicateOp: dOp,
 	}
 
 	return duplfs
@@ -286,5 +283,5 @@ func hexString2ObjectId(hex string) (*bson.ObjectId, error) {
 		return &oid, nil
 	}
 
-	return nil, fmt.Errorf("Invalid ObjectId: %s", hex)
+	return nil, fmt.Errorf("Invalid id, %s", hex)
 }

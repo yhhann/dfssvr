@@ -20,16 +20,29 @@ type GridFsHandler struct {
 	duplfs  *DuplFs
 }
 
+func (h *GridFsHandler) copySessionAndGridFS() (*mgo.Session, *mgo.GridFS) {
+	session := h.session.Copy()
+	return session, session.DB(h.Shard.Name).GridFS("fs")
+}
+
 // Name returns handler's name.
 func (h *GridFsHandler) Name() string {
 	return h.Shard.Name
 }
 
 // Create creates a DFSFile for write with the given file info.
-func (h *GridFsHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
-	file, err := h.gridfs.Create(info.Name)
-	if err != nil {
-		return nil, err
+func (h *GridFsHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
+	session, gridfs := h.copySessionAndGridFS()
+	defer func() {
+		if err != nil {
+			session.Close()
+		}
+	}()
+
+	file, er := gridfs.Create(info.Name)
+	if er != nil {
+		err = er
+		return
 	}
 
 	// For compatible with dfs 1.0.
@@ -39,26 +52,40 @@ func (h *GridFsHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 
 	oid, ok := file.Id().(bson.ObjectId)
 	if !ok {
-		return nil, fmt.Errorf("id %v is not an ObjectId", file.Id())
+		file.Close()
+		err = fmt.Errorf("id %v is not an ObjectId", file.Id())
+		return
 	}
 
 	// Make a copy of file info to hold information of file.
 	inf := *info
 	inf.Id = oid.Hex()
 
-	return &GridFsFile{
+	f = &GridFsFile{
 		GridFile: file,
 		info:     &inf,
 		handler:  h,
 		mode:     FileModeWrite,
-	}, nil
+		session:  session,
+		gridfs:   gridfs,
+	}
+
+	return
 }
 
 // Open opens a DFSFile for read with given id and domain.
-func (h *GridFsHandler) Open(id string, domain int64) (DFSFile, error) {
-	gridFile, err := h.duplfs.Find(id)
-	if err != nil {
-		return nil, err
+func (h *GridFsHandler) Open(id string, domain int64) (dfsFile DFSFile, err error) {
+	session, gridfs := h.copySessionAndGridFS()
+	defer func() {
+		if err != nil {
+			session.Close()
+		}
+	}()
+
+	gridFile, er := h.duplfs.Find(gridfs, id)
+	if er != nil {
+		err = er
+		return
 	}
 
 	inf := &transfer.FileInfo{
@@ -69,26 +96,28 @@ func (h *GridFsHandler) Open(id string, domain int64) (DFSFile, error) {
 		Md5:    gridFile.MD5(),
 	}
 
-	dfsFile := &GridFsFile{
+	dfsFile = &GridFsFile{
 		GridFile: gridFile,
 		info:     inf,
 		handler:  h,
 		mode:     FileModeRead,
+		session:  session,
+		gridfs:   gridfs,
 	}
 
-	return dfsFile, nil
+	return
 }
 
 // Duplicate duplicates an entry for a file.
 func (h *GridFsHandler) Duplicate(oid string) (string, error) {
-	return h.duplfs.Duplicate(oid)
+	return h.duplfs.Duplicate(h.gridfs, oid)
 }
 
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
 func (h *GridFsHandler) Find(id string) (string, error) {
-	gridFile, err := h.duplfs.Find(id)
+	gridFile, err := h.duplfs.Find(h.gridfs, id)
 	if err == mgo.ErrNotFound {
 		return "", nil
 	}
@@ -100,7 +129,7 @@ func (h *GridFsHandler) Find(id string) (string, error) {
 
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		return "", fmt.Errorf("Invalid ObjectId: %s", gridFile.Id())
+		return "", fmt.Errorf("Invalid id, %T, %v", gridFile.Id(), gridFile.Id())
 	}
 
 	log.Printf("Succeeded to find file %s, return %s", id, oid.Hex())
@@ -110,7 +139,7 @@ func (h *GridFsHandler) Find(id string) (string, error) {
 
 // Remove deletes a file with its id and domain.
 func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
-	f, err := h.duplfs.Find(id)
+	f, err := h.duplfs.Find(h.gridfs, id)
 	if err != nil {
 		return false, nil, err
 	}
@@ -119,12 +148,12 @@ func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error)
 	query := bson.D{
 		{"_id", f.Id()},
 	}
-	m, err := LookupFileMeta(h.duplfs.gridfs, query)
+	m, err := LookupFileMeta(h.gridfs, query)
 	if err != nil {
 		return false, nil, err
 	}
 
-	result, err := h.duplfs.Delete(id)
+	result, err := h.duplfs.Delete(h.gridfs, id)
 	if err != nil {
 		log.Printf("Failed to remove file: %s, error: %v", id, err)
 		return false, nil, err
@@ -146,20 +175,19 @@ func (h *GridFsHandler) HandlerType() HandlerType {
 
 // IsHealthy checks whether shard is ok.
 func (h *GridFsHandler) IsHealthy() bool {
-	err := h.session.Run("serverStatus", nil)
-	return err == nil
+	return h.session.Ping() == nil
 }
 
 // FindByMd5 finds a file by its md5.
 func (h *GridFsHandler) FindByMd5(md5 string, domain int64, size int64) (string, error) {
-	file, err := h.duplfs.FindByMd5(md5, domain, size)
+	file, err := h.duplfs.FindByMd5(h.gridfs, md5, domain, size)
 	if err != nil {
 		return "", err
 	}
 
 	oid, ok := file.Id().(bson.ObjectId)
 	if !ok {
-		return "", fmt.Errorf("Invalid Object: %T", file.Id())
+		return "", fmt.Errorf("Invalid id, %T, %v", file.Id(), file.Id())
 	}
 
 	return oid.Hex(), nil
@@ -171,20 +199,20 @@ func NewGridFsHandler(shardInfo *metadata.Shard) (*GridFsHandler, error) {
 		Shard: shardInfo,
 	}
 
-	session, err := metadata.OpenMongoSession(shardInfo.Uri)
+	session, err := metadata.CopySession(shardInfo.Uri)
 	if err != nil {
 		return nil, err
 	}
 
 	handler.session = session
-	handler.gridfs = session.Copy().DB(shardInfo.Name).GridFS("fs")
+	handler.gridfs = session.DB(handler.Shard.Name).GridFS("fs")
 
 	duplOp, err := metadata.NewDuplicateOp(session, shardInfo.Name, "fs")
 	if err != nil {
 		return nil, err
 	}
 
-	handler.duplfs = NewDuplFs(handler.gridfs, duplOp)
+	handler.duplfs = NewDuplFs(duplOp)
 
 	return handler, nil
 }
@@ -195,6 +223,9 @@ type GridFsFile struct {
 	info    *transfer.FileInfo
 	mode    dfsFileMode
 	handler *GridFsHandler
+
+	session *mgo.Session
+	gridfs  *mgo.GridFS
 }
 
 // GetFileInfo returns file meta info.
@@ -204,6 +235,13 @@ func (f GridFsFile) GetFileInfo() *transfer.FileInfo {
 
 // Close closes GridFsFile.
 func (f *GridFsFile) Close() error {
+	defer func() {
+		f.gridfs = nil
+		if f.session != nil {
+			f.session.Close()
+		}
+	}()
+
 	if err := f.GridFile.Close(); err != nil {
 		return err
 	}
@@ -233,7 +271,7 @@ func (f GridFsFile) updateGridMetadata() error {
 		"aliases", nil, // For compatible with dfs 1.0
 	})
 
-	return f.handler.gridfs.Files.Update(
+	return f.gridfs.Files.Update(
 		bson.M{
 			"_id": bson.ObjectIdHex(f.info.Id),
 		},

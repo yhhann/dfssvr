@@ -23,7 +23,11 @@ type RecoveryEventOp struct {
 }
 
 func (op *RecoveryEventOp) execute(target func(session *mgo.Session) error) error {
-	return metadata.Execute(op.session, target)
+	return metadata.ExecuteWithClone(op.session, target)
+}
+
+func (op *RecoveryEventOp) Close() {
+	op.session.Close()
 }
 
 // SaveEvent saves a degradation event.
@@ -80,7 +84,7 @@ func (op *RecoveryEventOp) GetEventsInBatch(batch int, timeout int64) ([]*Recove
 // NewRecoveryEventOp creates a RecoveryEventOp
 // with given mongodb uri and database name.
 func NewRecoveryEventOp(dbName string, uri string) (*RecoveryEventOp, error) {
-	session, err := metadata.OpenMongoSession(uri)
+	session, err := metadata.CopySession(uri)
 	if err != nil {
 		return nil, err
 	}

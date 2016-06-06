@@ -62,16 +62,30 @@ func (h *GlusterHandler) Close() error {
 	return nil // For compatible with Unmount returns.
 }
 
+func (h *GlusterHandler) copySessionAndGridFS() (*mgo.Session, *mgo.GridFS) {
+	session := h.session.Copy()
+	return session, session.DB(h.Shard.Name).GridFS("fs")
+}
+
 // Create creates a DFSFile for write.
-func (h *GlusterHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
-	gridFile, err := h.gridfs.Create(info.Name)
-	if err != nil {
-		return nil, err
+func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
+	session, gridfs := h.copySessionAndGridFS()
+	defer func() {
+		if err != nil {
+			session.Close()
+		}
+	}()
+
+	gridFile, er := gridfs.Create(info.Name)
+	if er != nil {
+		err = er
+		return
 	}
 
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		return nil, fmt.Errorf("Invalid ObjectId: %v", gridFile.Id())
+		err = fmt.Errorf("Invalid id, %T, %v", gridFile.Id(), gridFile.Id())
+		return
 	}
 
 	// For compatible with dfs 1.0.
@@ -81,15 +95,18 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 
 	filePath := util.GetFilePath(h.VolBase, info.Domain, oid.Hex(), h.PathVersion, h.PathDigit)
 	dir := filepath.Dir(filePath)
-	if err := h.Volume.MkdirAll(dir, 0755); err != nil && !os.IsExist(err) {
-		return nil, err
+	if err = h.Volume.MkdirAll(dir, 0755); err != nil && !os.IsExist(err) {
+		return
 	}
 
-	file, err := h.createGlusterFile(filePath)
+	var file *GlusterFile
+	file, err = h.createGlusterFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 	file.grf = gridFile
+	file.session = session
+	file.gridfs = gridfs
 
 	// Make a copy of file info to hold information of file.
 	inf := *info
@@ -97,7 +114,9 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 	inf.Size = 0
 	file.info = &inf
 
-	return file, nil
+	f = file
+
+	return
 }
 
 func (h *GlusterHandler) createGlusterFile(name string) (*GlusterFile, error) {
@@ -115,19 +134,30 @@ func (h *GlusterHandler) createGlusterFile(name string) (*GlusterFile, error) {
 }
 
 // Open opens a file for read.
-func (h *GlusterHandler) Open(id string, domain int64) (DFSFile, error) {
-	gridFile, err := h.duplfs.Find(id)
-	if err != nil {
-		return nil, err
+func (h *GlusterHandler) Open(id string, domain int64) (f DFSFile, err error) {
+	session, gridfs := h.copySessionAndGridFS()
+	defer func() {
+		if err != nil {
+			session.Close()
+		}
+	}()
+
+	gridFile, er := h.duplfs.Find(gridfs, id)
+	if er != nil {
+		err = er
+		return
 	}
 
 	filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
-	result, err := h.openGlusterFile(filePath)
-	if err != nil {
-		return nil, err
+	result, er := h.openGlusterFile(filePath)
+	if er != nil {
+		err = er
+		return
 	}
 
 	result.grf = gridFile
+	result.session = session
+	result.gridfs = gridfs
 	result.info = &transfer.FileInfo{
 		Id:     id,
 		Domain: domain,
@@ -135,20 +165,21 @@ func (h *GlusterHandler) Open(id string, domain int64) (DFSFile, error) {
 		Size:   gridFile.Size(),
 		Md5:    gridFile.MD5(),
 	}
+	f = result
 
-	return result, nil
+	return
 }
 
 // Duplicate duplicates an entry for a file.
 func (h *GlusterHandler) Duplicate(oid string) (string, error) {
-	return h.duplfs.Duplicate(oid)
+	return h.duplfs.Duplicate(h.gridfs, oid)
 }
 
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
 func (h *GlusterHandler) Find(id string) (string, error) {
-	gridFile, err := h.duplfs.Find(id)
+	gridFile, err := h.duplfs.Find(h.gridfs, id)
 	if err == mgo.ErrNotFound {
 		return "", nil
 	}
@@ -171,7 +202,7 @@ func (h *GlusterHandler) Find(id string) (string, error) {
 
 // Remove deletes file by its id and domain.
 func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
-	f, err := h.duplfs.Find(id)
+	f, err := h.duplfs.Find(h.gridfs, id)
 	if err != nil {
 		return false, nil, err
 	}
@@ -180,12 +211,12 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error
 	query := bson.D{
 		{"_id", f.Id()},
 	}
-	m, err := LookupFileMeta(h.duplfs.gridfs, query)
+	m, err := LookupFileMeta(h.gridfs, query)
 	if err != nil {
 		return false, nil, err
 	}
 
-	result, err := h.duplfs.Delete(id)
+	result, err := h.duplfs.Delete(h.gridfs, id)
 	if err != nil {
 		log.Printf("Failed to remove file: %s, error: %v", id, err)
 		return false, nil, err
@@ -221,7 +252,7 @@ func (h *GlusterHandler) HandlerType() HandlerType {
 
 // IsHealthy checks whether shard is ok.
 func (h *GlusterHandler) IsHealthy() bool {
-	if err := h.session.Run("serverStatus", nil); err != nil {
+	if err := h.session.Ping(); err != nil {
 		return false
 	}
 
@@ -247,14 +278,14 @@ func (h *GlusterHandler) IsHealthy() bool {
 
 // FindByMd5 finds a file by its md5.
 func (h *GlusterHandler) FindByMd5(md5 string, domain int64, size int64) (string, error) {
-	file, err := h.duplfs.FindByMd5(md5, domain, size)
+	file, err := h.duplfs.FindByMd5(h.gridfs, md5, domain, size)
 	if err != nil {
 		return "", err
 	}
 
 	oid, ok := file.Id().(bson.ObjectId)
 	if !ok {
-		return "", fmt.Errorf("Invalid Object: %T", file.Id())
+		return "", fmt.Errorf("Invalid id, %T, %v", file.Id(), file.Id())
 	}
 
 	return oid.Hex(), nil
@@ -271,20 +302,20 @@ func NewGlusterHandler(shardInfo *metadata.Shard, volLog string) (*GlusterHandle
 		return nil, err
 	}
 
-	session, err := metadata.OpenMongoSession(shardInfo.Uri)
+	session, err := metadata.CopySession(shardInfo.Uri)
 	if err != nil {
 		return nil, err
 	}
 
 	handler.session = session
-	handler.gridfs = session.Copy().DB(shardInfo.Name).GridFS("fs")
+	handler.gridfs = session.Copy().DB(handler.Shard.Name).GridFS("fs")
 
 	duplOp, err := metadata.NewDuplicateOp(session, shardInfo.Name, "fs")
 	if err != nil {
 		return nil, err
 	}
 
-	handler.duplfs = NewDuplFs(handler.gridfs, duplOp)
+	handler.duplfs = NewDuplFs(duplOp)
 
 	return handler, nil
 }
@@ -297,6 +328,9 @@ type GlusterFile struct {
 	md5     hash.Hash
 	mode    dfsFileMode
 	handler *GlusterHandler
+
+	session *mgo.Session
+	gridfs  *mgo.GridFS
 }
 
 // GetFileInfo returns file meta info.
@@ -327,6 +361,13 @@ func (f GlusterFile) Write(p []byte) (int, error) {
 // Close closes an open GlusterFile.
 // Returns an error on failure.
 func (f GlusterFile) Close() error {
+	defer func() {
+		f.gridfs = nil
+		if f.session != nil {
+			f.session.Close()
+		}
+	}()
+
 	if err := f.glf.Close(); err != nil {
 		return err
 	}
@@ -367,7 +408,7 @@ func (f GlusterFile) updateMetadata() error {
 		"md5", hex.EncodeToString(f.md5.Sum(nil)),
 	})
 
-	return f.handler.gridfs.Files.Update(
+	return f.gridfs.Files.Update(
 		bson.M{
 			"_id": f.grf.Id(),
 		},

@@ -41,6 +41,10 @@ func (d *DuplicateOp) execute(target func(session *mgo.Session) error) error {
 	return Execute(d.session, target)
 }
 
+func (d *DuplicateOp) Close() {
+	d.session.Close()
+}
+
 // SaveDupl saves a dupl.
 func (d *DuplicateOp) SaveDupl(dupl *Dupl) error {
 	if string(dupl.Id) == "" {

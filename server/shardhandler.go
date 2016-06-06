@@ -95,9 +95,9 @@ func (sh *ShardHandler) Shutdown() error {
 func (sh *ShardHandler) startHealthyCheckRoutine() {
 	sh.hs.setShardHandler(sh.handler.Name(), sh)
 
-	// Starts a routine for health check every healthCheckInterval seconds.
+	// Starts a routine for health check every HealthCheckInterval seconds.
 	go func() {
-		ticker := time.NewTicker(time.Duration(*healthCheckInterval) * time.Second)
+		ticker := time.NewTicker(time.Duration(*HealthCheckInterval) * time.Second)
 		defer ticker.Stop()
 
 		fh := sh.handler
@@ -110,7 +110,7 @@ func (sh *ShardHandler) startHealthyCheckRoutine() {
 					go func() {
 						status := healthCheck(fh)
 						sh.hs.updateHandlerStatus(fh, status)
-						log.Printf("Status of handler %v is %s", fh.Name(), status.String())
+						log.Printf("Health check, handler %v is %s", fh.Name(), status.String())
 					}()
 				}
 			case <-sh.healthyCheckRoutineRunning: // stop signal
@@ -121,7 +121,7 @@ func (sh *ShardHandler) startHealthyCheckRoutine() {
 	}()
 
 	log.Printf("Succeeded to start healthy check routine for %v, time interval %d seconds.",
-		sh.handler.Name(), *healthCheckInterval)
+		sh.handler.Name(), *HealthCheckInterval)
 }
 
 // Recovery recoveries files from degradeHandler to a perfect normale handler.

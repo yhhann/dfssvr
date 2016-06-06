@@ -12,4 +12,7 @@ go_binary(
     "//dfs/server:go_default_library",
     "//third-party-go/vendor/google.golang.org/grpc:go_default_library",
   ],
+  x_defs = {
+    "main.buildTime": "2016/06/01_19:35",
+  },
 )

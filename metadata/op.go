@@ -30,4 +30,7 @@ type MetaOp interface {
 
 	// FindAllShards finds all shard servers.
 	FindAllShards() []*Shard
+
+	// Close releases session hold by MetaOp.
+	Close()
 }

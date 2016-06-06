@@ -18,4 +18,7 @@ type Notice interface {
 	// when its sibling nodes changed. If check is true,
 	// will start a routine to process the nodes change, otherwise not.
 	Register(prefix string, data []byte, startCheckRoutine bool) (string, <-chan []byte, <-chan error, <-chan struct{}, <-chan struct{})
+
+	// Close release resource hold by Notice.
+	CloseZk()
 }
