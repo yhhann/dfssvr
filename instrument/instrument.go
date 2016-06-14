@@ -117,6 +117,42 @@ var (
 		[]string{"service"},
 	)
 	StorageStatus = make(chan *Measurements, *metricsBufSize)
+
+	createdSessionGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "session_created",
+			Help:      "number of created session.",
+		},
+		[]string{"uri"},
+	)
+	IncCreated = make(chan *Measurements, *metricsBufSize)
+	DecCreated = make(chan *Measurements, *metricsBufSize)
+
+	copiedSessionGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "session_copied",
+			Help:      "number of copied session.",
+		},
+		[]string{"uri"},
+	)
+	IncCopied = make(chan *Measurements, *metricsBufSize)
+	DecCopied = make(chan *Measurements, *metricsBufSize)
+
+	clonedSessionGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "session_cloned",
+			Help:      "number of cloned session.",
+		},
+		[]string{"uri"},
+	)
+	IncCloned = make(chan *Measurements, *metricsBufSize)
+	DecCloned = make(chan *Measurements, *metricsBufSize)
 )
 
 func init() {
@@ -128,6 +164,9 @@ func init() {
 	prometheus.MustRegister(fileSize)
 	prometheus.MustRegister(noDeadlineCounter)
 	prometheus.MustRegister(storageStatusGauge)
+	prometheus.MustRegister(createdSessionGauge)
+	prometheus.MustRegister(copiedSessionGauge)
+	prometheus.MustRegister(clonedSessionGauge)
 }
 
 func StartMetrics() {
@@ -151,6 +190,18 @@ func StartMetrics() {
 					sucDuration.WithLabelValues(m.Name).Observe(m.Value)
 				case m := <-StorageStatus:
 					storageStatusGauge.WithLabelValues(m.Name).Set(m.Value)
+				case m := <-IncCreated:
+					createdSessionGauge.WithLabelValues(m.Name).Inc()
+				case m := <-DecCreated:
+					createdSessionGauge.WithLabelValues(m.Name).Dec()
+				case m := <-IncCopied:
+					copiedSessionGauge.WithLabelValues(m.Name).Inc()
+				case m := <-DecCopied:
+					copiedSessionGauge.WithLabelValues(m.Name).Dec()
+				case m := <-IncCloned:
+					clonedSessionGauge.WithLabelValues(m.Name).Inc()
+				case m := <-DecCloned:
+					clonedSessionGauge.WithLabelValues(m.Name).Dec()
 				}
 			}
 		}()

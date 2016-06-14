@@ -29,8 +29,8 @@ type Ref struct {
 }
 
 type DuplicateOp struct {
-	session *mgo.Session
-	dbName  string
+	dbName string
+	uri    string
 
 	prefix      string
 	duplColName string
@@ -38,11 +38,16 @@ type DuplicateOp struct {
 }
 
 func (d *DuplicateOp) execute(target func(session *mgo.Session) error) error {
-	return Execute(d.session, target)
+	s, err := CloneSession(d.uri)
+	if err != nil {
+		return err
+	}
+	defer ReleaseSession(s)
+
+	return target(s)
 }
 
 func (d *DuplicateOp) Close() {
-	d.session.Close()
 }
 
 // SaveDupl saves a dupl.
@@ -197,12 +202,11 @@ func (d *DuplicateOp) DecRefCnt(id bson.ObjectId) (*Ref, error) {
 
 // NewDuplicateOp creates a DuplicateOp object with given session
 // and database name.
-//func NewDuplicateOp(dbName string, uri string) (*DuplicateOp, error) {
-func NewDuplicateOp(session *mgo.Session, dbName string, prefix string) (*DuplicateOp, error) {
+func NewDuplicateOp(dbName string, uri string, prefix string) (*DuplicateOp, error) {
 	return &DuplicateOp{
+		uri:         uri,
 		dbName:      dbName,
 		prefix:      prefix,
-		session:     session,
 		duplColName: strings.Join([]string{prefix, DUPL_COL}, "."),
 		rcColName:   strings.Join([]string{prefix, RC_COL}, "."),
 	}, nil

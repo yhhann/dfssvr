@@ -87,13 +87,22 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 	return nil
 }
 
+type DBAddr struct {
+	ShardDbName string
+	ShardDbUri  string
+	EventDbName string
+	EventDbUri  string
+	SlogDbName  string
+	SlogDbUri   string
+}
+
 // NewDFSServer creates a DFSServer
 //
 // example:
 //  lsnAddr, _ := ResolveTCPAddr("tcp", ":10000")
 //  dfsServer, err := NewDFSServer(lsnAddr, "mySite", "shard",
 //         "mongodb://192.168.1.15:27017", "192.168.1.16:2181", 3)
-func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAddrs string, zkTimeout int) (server *DFSServer, err error) {
+func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string, zkTimeout int) (server *DFSServer, err error) {
 	log.Printf("Try to start DFS server %v on %v\n", name, lsnAddr.String())
 
 	server = new(DFSServer)
@@ -109,28 +118,28 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbName string, uri string, zkAd
 	server.register = r
 	server.notice = zk
 
-	spaceOp, err := metadata.NewSpaceLogOp(dbName, uri)
+	spaceOp, err := metadata.NewSpaceLogOp(dbAddr.SlogDbName, dbAddr.SlogDbUri)
 	if err != nil {
-		return nil, fmt.Errorf("%v, %s %s", err, dbName, uri)
+		return nil, fmt.Errorf("%v, %s %s", err, dbAddr.SlogDbName, dbAddr.SlogDbUri)
 	}
 	server.spaceOp = spaceOp
 
-	eventOp, err := metadata.NewEventOp(dbName, uri)
+	eventOp, err := metadata.NewEventOp(dbAddr.EventDbName, dbAddr.EventDbUri)
 	if err != nil {
-		return nil, fmt.Errorf("%v, %s %s", err, dbName, uri)
+		return nil, fmt.Errorf("%v, %s %s", err, dbAddr.EventDbName, dbAddr.EventDbUri)
 	}
 	server.eventOp = eventOp
 
 	// Create NewMongoMetaOp
-	mop, err := metadata.NewMongoMetaOp(dbName, uri)
+	mop, err := metadata.NewMongoMetaOp(dbAddr.ShardDbName, dbAddr.ShardDbUri)
 	if err != nil {
-		return nil, fmt.Errorf("%v, %s %s", err, dbName, uri)
+		return nil, fmt.Errorf("%v, %s %s", err, dbAddr.ShardDbName, dbAddr.ShardDbUri)
 	}
 	server.mOp = mop
 
-	reop, err := recovery.NewRecoveryEventOp(dbName, uri)
+	reop, err := recovery.NewRecoveryEventOp(dbAddr.EventDbName, dbAddr.EventDbUri)
 	if err != nil {
-		return nil, fmt.Errorf("%v, %s %s", err, dbName, uri)
+		return nil, fmt.Errorf("%v, %s %s", err, dbAddr.EventDbName, dbAddr.EventDbUri)
 	}
 	server.reOp = reop
 

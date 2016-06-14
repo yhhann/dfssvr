@@ -47,16 +47,19 @@ type SpaceLog struct {
 type SpaceLogOp struct {
 	uri    string
 	dbName string
-
-	session *mgo.Session
 }
 
 func (op *SpaceLogOp) execute(target func(*mgo.Session) error) error {
-	return ExecuteWithClone(op.session, target)
+	s, err := CloneSession(op.uri)
+	if err != nil {
+		return err
+	}
+	defer ReleaseSession(s)
+
+	return target(s)
 }
 
 func (op *SpaceLogOp) Close() {
-	op.session.Close()
 }
 
 func (op *SpaceLogOp) SaveSpaceLog(log *SpaceLog) error {
@@ -81,14 +84,8 @@ func (op *SpaceLogOp) SaveSpaceLog(log *SpaceLog) error {
 // NewSpaceLogOp creates a SpaceLogOp object with given mongodb uri
 // and database name.
 func NewSpaceLogOp(dbName string, uri string) (*SpaceLogOp, error) {
-	session, err := CopySession(uri)
-	if err != nil {
-		return nil, err
-	}
-
 	return &SpaceLogOp{
-		uri:     uri,
-		dbName:  dbName,
-		session: session,
+		uri:    uri,
+		dbName: dbName,
 	}, nil
 }

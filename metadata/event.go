@@ -77,16 +77,19 @@ type Event struct {
 type EventOp struct {
 	uri    string
 	dbName string
-
-	session *mgo.Session
 }
 
 func (op *EventOp) execute(target func(session *mgo.Session) error) error {
-	return ExecuteWithClone(op.session, target)
+	s, err := CopySession(op.uri)
+	if err != nil {
+		return err
+	}
+	defer ReleaseSession(s)
+
+	return target(s)
 }
 
 func (op *EventOp) Close() {
-	op.session.Close()
 }
 
 // SaveEvent saves an event into database.
@@ -144,14 +147,8 @@ func (op *EventOp) GetEvents(eventType string, threadId string, start int64, end
 // NewEvnetOp creates a EventOp object with given mongodb uri
 // and database name.
 func NewEventOp(dbName string, uri string) (*EventOp, error) {
-	session, err := CopySession(uri)
-	if err != nil {
-		return nil, err
-	}
-
 	return &EventOp{
-		uri:     uri,
-		dbName:  dbName,
-		session: session,
+		uri:    uri,
+		dbName: dbName,
 	}, nil
 }

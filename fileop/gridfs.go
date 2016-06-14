@@ -21,8 +21,19 @@ type GridFsHandler struct {
 }
 
 func (h *GridFsHandler) copySessionAndGridFS() (*mgo.Session, *mgo.GridFS) {
-	session := h.session.Copy()
+	session, err := metadata.CopySession(h.Uri)
+	if err != nil {
+		log.Printf("Error, session is nil")
+	}
+
 	return session, session.DB(h.Shard.Name).GridFS("fs")
+}
+
+// releaseSession releases a session if err occured.
+func (h *GridFsHandler) releaseSession(session *mgo.Session, err error) {
+	if err != nil && session != nil {
+		metadata.ReleaseSession(session)
+	}
 }
 
 // Name returns handler's name.
@@ -33,11 +44,7 @@ func (h *GridFsHandler) Name() string {
 // Create creates a DFSFile for write with the given file info.
 func (h *GridFsHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
-	defer func() {
-		if err != nil {
-			session.Close()
-		}
-	}()
+	defer h.releaseSession(session, err)
 
 	file, er := gridfs.Create(info.Name)
 	if er != nil {
@@ -76,11 +83,7 @@ func (h *GridFsHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 // Open opens a DFSFile for read with given id and domain.
 func (h *GridFsHandler) Open(id string, domain int64) (dfsFile DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
-	defer func() {
-		if err != nil {
-			session.Close()
-		}
-	}()
+	defer h.releaseSession(session, err)
 
 	gridFile, er := h.duplfs.Find(gridfs, id)
 	if er != nil {
@@ -207,7 +210,7 @@ func NewGridFsHandler(shardInfo *metadata.Shard) (*GridFsHandler, error) {
 	handler.session = session
 	handler.gridfs = session.DB(handler.Shard.Name).GridFS("fs")
 
-	duplOp, err := metadata.NewDuplicateOp(session, shardInfo.Name, "fs")
+	duplOp, err := metadata.NewDuplicateOp(shardInfo.Name, shardInfo.Uri, "fs")
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +241,7 @@ func (f *GridFsFile) Close() error {
 	defer func() {
 		f.gridfs = nil
 		if f.session != nil {
-			f.session.Close()
+			metadata.ReleaseSession(f.session)
 		}
 	}()
 

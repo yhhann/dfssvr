@@ -4,16 +4,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
+
+	"jingoal.com/dfs/instrument"
 )
+
+type sessionInstrument func() string
+
+type Session struct {
+	session *mgo.Session
+	uri     string
+}
 
 var (
 	mongoSessionManager *sessionManager
+	sessionMap          map[*mgo.Session]sessionInstrument
+	sessionLock         sync.Mutex
 )
 
 func init() {
 	mongoSessionManager = newSessionManager()
+	sessionMap = make(map[*mgo.Session]sessionInstrument)
 }
 
 // CopySession returns a session copied from the original session.
@@ -22,8 +33,33 @@ func CopySession(uri string) (*mgo.Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO(hanyh): monitor
-	return original.Copy(), nil
+
+	session := original.Copy()
+
+	me := instrument.Measurements{
+		Name:  uri,
+		Value: 0.0,
+	}
+	instrument.IncCopied <- &me
+	sessionLock.Lock()
+	sessionMap[session] = func() string {
+		instrument.DecCopied <- &me
+		return uri
+	}
+	sessionLock.Unlock()
+
+	return session, nil
+}
+
+func ReleaseSession(session *mgo.Session) {
+	sessionLock.Lock()
+	if f, ok := sessionMap[session]; ok {
+		delete(sessionMap, session)
+		f()
+	}
+	sessionLock.Unlock()
+
+	session.Close()
 }
 
 // CloneSession returns a session cloned from the original session.
@@ -32,8 +68,23 @@ func CloneSession(uri string) (*mgo.Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO(hanyh): monitor
-	return original.Clone(), nil
+
+	session := original.Clone()
+
+	me := instrument.Measurements{
+		Name:  uri,
+		Value: 0.0,
+	}
+	instrument.IncCloned <- &me
+	sessionLock.Lock()
+	sessionMap[session] = func() string {
+		instrument.DecCloned <- &me
+		return uri
+	}
+	sessionLock.Unlock()
+
+	return session, nil
+
 }
 
 // GetSession returns a singleton instance of session for every uri.
@@ -79,8 +130,18 @@ func (sm *sessionManager) getOrCreate(uri string) (*mgo.Session, error) {
 		return nil, err
 	}
 
-	// TODO(hanyh): monitor the session.
-	glog.Infof("Succeeded to create session to %s", uri)
+	me := instrument.Measurements{
+		Name:  uri,
+		Value: 0.0,
+	}
+	instrument.IncCreated <- &me
+	sessionLock.Lock()
+	sessionMap[session] = func() string {
+		instrument.DecCreated <- &me
+		return uri
+	}
+	sessionLock.Unlock()
+
 	sm.ss[uri] = session
 
 	return session, nil

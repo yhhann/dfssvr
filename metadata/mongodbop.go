@@ -23,16 +23,19 @@ var (
 type MongoMetaOp struct {
 	uri    string
 	dbName string
-
-	session *mgo.Session
 }
 
 func (op *MongoMetaOp) execute(target func(session *mgo.Session) error) error {
-	return ExecuteWithClone(op.session, target)
+	s, err := CloneSession(op.uri)
+	if err != nil {
+		return err
+	}
+	defer ReleaseSession(s)
+
+	return target(s)
 }
 
 func (op *MongoMetaOp) Close() {
-	op.session.Close()
 }
 
 // SaveSegment saves a Segment object into "chunks" collection.
@@ -93,7 +96,7 @@ func (op *MongoMetaOp) RemoveSegment(domain int64) error {
 	})
 }
 
-// FindAllSegmentOrderByDomain finds all segment from collection "chunks"
+// FindAllSegmentsOrderByDomain finds all segment from collection "chunks"
 func (op *MongoMetaOp) FindAllSegmentsOrderByDomain() []*Segment {
 	result := make([]*Segment, 0, 100)
 
@@ -142,28 +145,8 @@ func (op *MongoMetaOp) FindAllShards() []*Shard {
 // NewMongoMetaOp creates a MongoMetaOp object with given mongodb uri
 // and database name.
 func NewMongoMetaOp(dbName string, uri string) (*MongoMetaOp, error) {
-	session, err := CopySession(uri)
-	if err != nil {
-		return nil, err
-	}
-
 	return &MongoMetaOp{
-		uri:     uri,
-		dbName:  dbName,
-		session: session,
+		uri:    uri,
+		dbName: dbName,
 	}, nil
-}
-
-func Execute(session *mgo.Session, target func(*mgo.Session) error) error {
-	s := session.Copy()
-	defer s.Close()
-
-	return target(s)
-}
-
-func ExecuteWithClone(session *mgo.Session, target func(*mgo.Session) error) error {
-	s := session.Clone()
-	defer s.Close()
-
-	return target(s)
 }

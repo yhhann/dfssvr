@@ -25,6 +25,10 @@ var (
 	timeout     = flag.Int("zk-timeout", 15000, "zookeeper timeout")
 	shardDbName = flag.String("shard-name", "shard", "shard database name")
 	shardDbUri  = flag.String("shard-dburi", "mongodb://127.0.0.1:27017", "shard database uri")
+	eventDbName = flag.String("event-dbname", "dfsevent", "event database name")
+	eventDbUri  = flag.String("event-dburi", "mongodb://127.0.0.1:27017", "event database uri")
+	slogDbName  = flag.String("slog-dbname", "dfsslog", "slog database name")
+	slogDbUri   = flag.String("slog-dburi", "mongodb://127.0.0.1:27017", "slog database uri")
 	logDir      = flag.String("log-dir", "/var/log/dfs", "The log directory.")
 	compress    = flag.Bool("compress", false, "compressing transfer file")
 	concurrency = flag.Uint("concurrency", 0, "Concurrency")
@@ -59,6 +63,18 @@ func checkFlags() {
 	if *shardDbUri == "" {
 		log.Println("Flag --shard-dburi is required.")
 		os.Exit(5)
+	}
+	if *slogDbName == "" {
+		slogDbName = shardDbName
+	}
+	if *slogDbUri == "" {
+		slogDbUri = shardDbUri
+	}
+	if *eventDbName == "" {
+		eventDbName = shardDbName
+	}
+	if *eventDbUri == "" {
+		eventDbUri = shardDbUri
 	}
 	if *concurrency < 0 {
 		*concurrency = 0
@@ -105,9 +121,18 @@ func main() {
 	}
 	log.Printf("DFSServer listened on %s", lis.Addr().String())
 
+	dbAddr := &server.DBAddr{
+		ShardDbName: *shardDbName,
+		ShardDbUri:  *shardDbUri,
+		EventDbName: *eventDbName,
+		EventDbUri:  *eventDbUri,
+		SlogDbName:  *slogDbName,
+		SlogDbUri:   *slogDbUri,
+	}
+
 	var dfsServer *server.DFSServer
 	for {
-		dfsServer, err = server.NewDFSServer(lis.Addr(), *name, *shardDbName, *shardDbUri, *zkAddr, *timeout)
+		dfsServer, err = server.NewDFSServer(lis.Addr(), *name, dbAddr, *zkAddr, *timeout)
 		if err != nil {
 			log.Printf("Failed to create DFS Server: %v, try again.", err)
 			time.Sleep(time.Duration(*server.HealthCheckInterval) * time.Second)
