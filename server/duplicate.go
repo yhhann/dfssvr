@@ -80,11 +80,10 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 }
 
 func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {
-	h, file, err := s.searchFileForRead(oid, domain)
+	h, _, err := s.findFileForRead(oid, domain)
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
 
 	// duplicate file from proper handler.
 	did, err := h.Duplicate(oid)

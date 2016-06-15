@@ -125,7 +125,6 @@ func (h *GridFsHandler) Find(id string) (string, error) {
 		return "", nil
 	}
 	if err != nil {
-		log.Printf("Failed to find file %s", id)
 		return "", err
 	}
 	defer gridFile.Close()
@@ -158,7 +157,7 @@ func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error)
 
 	result, err := h.duplfs.Delete(h.gridfs, id)
 	if err != nil {
-		log.Printf("Failed to remove file: %s, error: %v", id, err)
+		log.Printf("Failed to remove file %s %d, error: %s", id, domain, err)
 		return false, nil, err
 	}
 

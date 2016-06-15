@@ -45,6 +45,12 @@ func (h *GlusterHandler) initVolume() error {
 		return fmt.Errorf("init volume %s on %s error: %d\n", h.VolName, h.VolHost, ret)
 	}
 
+	if _, err := os.Stat(h.VolLog); os.IsNotExist(err) {
+		if err = os.MkdirAll(h.VolLog, 0700); err != nil {
+			return fmt.Errorf("Failed to create log directory: %v", err)
+		}
+	}
+
 	if ret, _ := h.SetLogging(h.VolLog, gfapi.LogInfo); ret != 0 {
 		return fmt.Errorf("set log to %s error: %d\n", h.VolLog, ret)
 	}
@@ -151,7 +157,13 @@ func (h *GlusterHandler) Open(id string, domain int64) (f DFSFile, err error) {
 		return
 	}
 
-	filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
+	oid, ok := gridFile.Id().(bson.ObjectId)
+	if !ok {
+		err = fmt.Errorf("assertion error %T %v", gridFile.Id(), gridFile.Id())
+		return
+	}
+
+	filePath := util.GetFilePath(h.VolBase, domain, oid.Hex(), h.PathVersion, h.PathDigit)
 	result, er := h.openGlusterFile(filePath)
 	if er != nil {
 		err = er
@@ -187,14 +199,12 @@ func (h *GlusterHandler) Find(id string) (string, error) {
 		return "", nil
 	}
 	if err != nil {
-		log.Printf("Failed to find file %s", id)
 		return "", err
 	}
 	defer gridFile.Close()
 
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		log.Printf("Failed to find file %s", id)
 		return "", fmt.Errorf("find file error %s", id)
 	}
 
@@ -221,14 +231,19 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error
 
 	result, err := h.duplfs.Delete(h.gridfs, id)
 	if err != nil {
-		log.Printf("Failed to remove file: %s, error: %v", id, err)
+		log.Printf("Failed to remove file %s %d, error: %s", id, domain, err)
 		return false, nil, err
 	}
 
 	if result {
-		filePath := util.GetFilePath(h.VolBase, domain, id, h.PathVersion, h.PathDigit)
+		oid, ok := f.Id().(bson.ObjectId)
+		if !ok {
+			return false, nil, nil
+		}
+
+		filePath := util.GetFilePath(h.VolBase, domain, oid.Hex(), h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
-			return result, nil, err
+			log.Printf("Failed to remove file %s %d from %s", id, domain, filePath)
 		}
 	}
 

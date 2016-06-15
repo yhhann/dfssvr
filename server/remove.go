@@ -87,7 +87,7 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 		p = *h
 		result, fm, err = p.Remove(req.Id, req.Domain)
 		if err != nil {
-			log.Printf("RemoveFile, failed to remove file %s from %v", req.Id, p.Name())
+			log.Printf("RemoveFile, failed to remove file %s %d from %v, %v", req.Id, req.Domain, p.Name(), err)
 		}
 	}
 

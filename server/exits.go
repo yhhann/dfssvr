@@ -11,22 +11,29 @@ import (
 )
 
 // Exist checks existentiality of a file.
-func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (*transfer.ExistRep, error) {
+func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (result *transfer.ExistRep, err error) {
 	serviceName := "Exist"
 	peerAddr := getPeerAddressString(ctx)
-	log.Printf("service: %s, client: %s, %v", serviceName, peerAddr, req)
+	defer func() {
+		if err != nil {
+			log.Printf("%s, client: %s, %v, error %v", serviceName, peerAddr, req, err)
+		} else {
+			log.Printf("%s, client: %s, %v, result %t", serviceName, peerAddr, req, result.Result)
+		}
+	}()
 
 	if len(req.Id) == 0 || req.Domain <= 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := withDeadline(serviceName, ctx, req, s.existBiz)
-
+	var t interface{}
+	t, err = withDeadline(serviceName, ctx, req, s.existBiz)
 	if err != nil {
 		return nil, err
 	}
 
-	if result, ok := t.(*transfer.ExistRep); ok {
+	ok := false
+	if result, ok = t.(*transfer.ExistRep); ok {
 		return result, err
 	}
 
@@ -40,15 +47,14 @@ func (s *DFSServer) exist(id string, domain int64) (result bool, err error) {
 		}
 	}()
 
-	_, file, err := s.searchFileForRead(id, domain)
+	_, fid, err := s.findFileForRead(id, domain)
 	if err != nil {
 		return
 	}
-	if file == nil {
+	if fid == "" {
 		return
 	}
 
-	file.Close()
 	result, err = true, nil
 	return
 }
@@ -61,7 +67,7 @@ func (s *DFSServer) existBiz(c interface{}, r interface{}, args []interface{}) (
 
 	result, err := s.exist(req.Id, req.Domain)
 	if err != nil {
-		log.Printf("Failed to exist %s, %d", req.Id, req.Domain)
+		log.Printf("Failed to exist %s, %d, %v", req.Id, req.Domain, err)
 	}
 
 	return &transfer.ExistRep{

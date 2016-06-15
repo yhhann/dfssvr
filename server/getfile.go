@@ -38,7 +38,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 		return err
 	}
 
-	_, file, err := s.searchFileForRead(req.Id, req.Domain)
+	_, file, err := s.openFileForRead(req.Id, req.Domain)
 	if err != nil {
 		if err == fileop.FileNotFound {
 			event := &metadata.Event{

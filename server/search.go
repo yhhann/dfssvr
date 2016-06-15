@@ -6,7 +6,7 @@ import (
 	"jingoal.com/dfs/fileop"
 )
 
-func (s *DFSServer) searchFileForRead(id string, domain int64) (fileop.DFSFileHandler, fileop.DFSFile, error) {
+func (s *DFSServer) openFileForRead(id string, domain int64) (fileop.DFSFileHandler, fileop.DFSFile, error) {
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
 	if err != nil {
 		return nil, nil, err
@@ -17,10 +17,10 @@ func (s *DFSServer) searchFileForRead(id string, domain int64) (fileop.DFSFileHa
 		m = *mh
 	}
 
-	return searchFile(id, domain, *nh, m)
+	return openFile(id, domain, *nh, m)
 }
 
-func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFileHandler, fileop.DFSFile, error) {
+func openFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFileHandler, fileop.DFSFile, error) {
 	var h fileop.DFSFileHandler
 
 	if mh != nil && nh != nil {
@@ -31,10 +31,43 @@ func searchFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFS
 			file, err = nh.Open(id, domain)
 		}
 		return h, file, err
-	} else if mh == nil && nh != nil {
+	}
+	if mh == nil && nh != nil {
 		f, err := nh.Open(id, domain)
 		return nh, f, err
-	} else {
-		return nil, nil, fmt.Errorf("get file error: normal site is nil")
 	}
+	return nil, nil, fmt.Errorf("get file error: normal site is nil")
+}
+
+func (s *DFSServer) findFileForRead(id string, domain int64) (fileop.DFSFileHandler, string, error) {
+	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var m fileop.DFSFileHandler
+	if mh != nil {
+		m = *mh
+	}
+
+	return findFile(id, *nh, m)
+}
+
+func findFile(id string, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFileHandler, string, error) {
+	var h fileop.DFSFileHandler
+
+	if mh != nil && nh != nil {
+		h = mh
+		fid, err := mh.Find(id)
+		if err != nil || fid == "" { // Need not to check mgo.ErrNotFound
+			h = nh
+			fid, err = nh.Find(id)
+		}
+		return h, fid, err
+	}
+	if mh == nil && nh != nil {
+		fid, err := nh.Find(id)
+		return nh, fid, err
+	}
+	return nil, "", fmt.Errorf("get file error: normal site is nil")
 }

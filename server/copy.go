@@ -62,7 +62,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 
 	startTime := time.Now()
 
-	_, rf, err := s.searchFileForRead(req.SrcFid, req.SrcDomain)
+	_, rf, err := s.openFileForRead(req.SrcFid, req.SrcDomain)
 	if err != nil {
 		return nil, err
 	}
