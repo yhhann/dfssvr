@@ -136,12 +136,10 @@ func getDeadline(env interface{}) (deadline time.Time, ok bool) {
 
 func checkTimeout(size int64, rate float64, given time.Duration) (time.Duration, error) {
 	if rate != 0.0 && size != 0 {
-		rate := int64(rate * 1024) // convert unit of rate from kbit/s to bit/s
-		size := size * 8           // convert unit of size from bytes to bits
-		need := size / rate
-		need *= 1e9
-		if given.Nanoseconds() < need {
-			log.Printf("DEBUG: Deadline exceeded: rate %f, size %d, need %f, given %f", rate, size, need, given.Nanoseconds())
+		rate := float64(rate * 1024) // convert unit of rate from kbit/s to bit/s
+		size := float64(size * 8)    // convert unit of size from bytes to bits
+		need := time.Duration(size / rate * float64(time.Second))
+		if given.Nanoseconds() < need.Nanoseconds() {
 			return time.Duration(need), context.DeadlineExceeded
 		}
 	}
