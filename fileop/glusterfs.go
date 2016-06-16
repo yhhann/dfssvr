@@ -37,6 +37,20 @@ func (h *GlusterHandler) Name() string {
 	return h.Shard.Name
 }
 
+func (h *GlusterHandler) makeSureLogDir() error {
+	logDir := filepath.Dir(h.VolLog)
+
+	_, err := os.Stat(logDir)
+	if os.IsNotExist(err) {
+		return os.MkdirAll(logDir, 0700)
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // initVolume initializes gluster volume.
 func (h *GlusterHandler) initVolume() error {
 	h.Volume = new(gfapi.Volume)
@@ -45,12 +59,9 @@ func (h *GlusterHandler) initVolume() error {
 		return fmt.Errorf("init volume %s on %s error: %d\n", h.VolName, h.VolHost, ret)
 	}
 
-	if _, err := os.Stat(h.VolLog); os.IsNotExist(err) {
-		if err = os.MkdirAll(h.VolLog, 0700); err != nil {
-			return fmt.Errorf("Failed to create log directory: %v", err)
-		}
+	if err := h.makeSureLogDir(); err != nil {
+		return fmt.Errorf("Failed to create log directory: %v", err)
 	}
-
 	if ret, _ := h.SetLogging(h.VolLog, gfapi.LogInfo); ret != 0 {
 		return fmt.Errorf("set log to %s error: %d\n", h.VolLog, ret)
 	}
