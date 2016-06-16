@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/instrument"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/util"
@@ -162,8 +163,13 @@ func (s *DFSServer) createFile(reqInfo *transfer.FileInfo, stream transfer.FileT
 	// check timeout, for test.
 	if dl, ok := getDeadline(stream); ok {
 		given := dl.Sub(startTime)
-		_, err := checkTimeout(reqInfo.Size, wRate, given)
+		expected, err := checkTimeout(reqInfo.Size, wRate, given)
 		if err != nil {
+			instrument.PrejudgeExceed <- &instrument.Measurements{
+				Name:  "PutFile",
+				Value: float64(expected.Nanoseconds()),
+			}
+			log.Printf("PutFile, timeout return early, expected %v, given %v", expected, given)
 			return nil, nil, err
 		}
 	}
@@ -180,6 +186,7 @@ func (s *DFSServer) createFile(reqInfo *transfer.FileInfo, stream transfer.FileT
 
 	return file, handler, nil
 }
+
 func extractStreamFuncParams(args []interface{}) (sName string, pAddr string, err error) {
 	if len(args) < 2 {
 		err = fmt.Errorf("parameter number %d", len(args))

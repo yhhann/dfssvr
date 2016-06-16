@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/instrument"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/util"
@@ -59,7 +60,11 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 		given := dl.Sub(startTime)
 		expected, err := checkTimeout(file.GetFileInfo().Size, rRate, given)
 		if err != nil {
-			log.Printf("%s, Timeout will happen, expected %v, given %v, return immediately", serviceName, expected, given)
+			instrument.PrejudgeExceed <- &instrument.Measurements{
+				Name:  serviceName,
+				Value: float64(expected.Nanoseconds()),
+			}
+			log.Printf("%s, timeout return early, expected %v, given %v", serviceName, expected, given)
 			return err
 		}
 	}

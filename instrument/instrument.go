@@ -153,6 +153,17 @@ var (
 	)
 	IncCloned = make(chan *Measurements, *metricsBufSize)
 	DecCloned = make(chan *Measurements, *metricsBufSize)
+
+	prejudgeExceedCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "prejudge_exceed_counter",
+			Help:      "prejudge exceed counter.",
+		},
+		[]string{"service"},
+	)
+	PrejudgeExceed = make(chan *Measurements, *metricsBufSize)
 )
 
 func init() {
@@ -167,6 +178,7 @@ func init() {
 	prometheus.MustRegister(createdSessionGauge)
 	prometheus.MustRegister(copiedSessionGauge)
 	prometheus.MustRegister(clonedSessionGauge)
+	prometheus.MustRegister(prejudgeExceedCounter)
 }
 
 func StartMetrics() {
@@ -202,6 +214,8 @@ func StartMetrics() {
 					clonedSessionGauge.WithLabelValues(m.Name).Inc()
 				case m := <-DecCloned:
 					clonedSessionGauge.WithLabelValues(m.Name).Dec()
+				case m := <-PrejudgeExceed:
+					prejudgeExceedCounter.WithLabelValues(m.Name).Inc()
 				}
 			}
 		}()
