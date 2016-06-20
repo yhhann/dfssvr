@@ -5,6 +5,8 @@ import (
 
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
+
+	"jingoal.com/dfs/proto/transfer"
 )
 
 const (
@@ -71,7 +73,7 @@ type Event struct {
 	EType       EventType     `bson:"eType"`               // event type (dfs 2.0)
 	Fid         string        `bson:"fid"`                 // fid
 	Elapse      int64         `bson:"elapse,omitempty"`    // elapse in nanosecond
-	// TODO(hanyh): Add a field to record node which generats this event.
+	Node        string        `bson:"nodeId,omitempty"`    // name of node which generats this event
 }
 
 type EventOp struct {
@@ -100,6 +102,9 @@ func (op *EventOp) SaveEvent(e *Event) error {
 	}
 	if !e.Id.Valid() {
 		return ObjectIdInvalidError
+	}
+	if e.Node == "" {
+		e.Node = transfer.NodeName
 	}
 	return op.execute(func(session *mgo.Session) error {
 		return session.DB(op.dbName).C(EVENT_COL).Insert(*e)
