@@ -19,7 +19,7 @@ func (s *DFSServer) Stat(ctx context.Context, req *transfer.GetFileReq) (*transf
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := withDeadline(serviceName, ctx, req, s.statBiz)
+	t, err := bizFunc(s.statBiz).withDeadline(serviceName, ctx, req)
 	if err != nil {
 		return nil, err
 	}

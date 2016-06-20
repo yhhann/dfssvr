@@ -23,7 +23,7 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 		return fmt.Errorf("invalid request [%v]", req)
 	}
 
-	return withStreamDeadline(serviceName, req, stream, s.getFileStream, serviceName, peerAddr, s)
+	return streamFunc(s.getFileStream).withStreamDeadline(serviceName, req, stream, serviceName, peerAddr, s)
 }
 
 func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, args []interface{}) error {

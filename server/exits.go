@@ -27,7 +27,7 @@ func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (result *
 	}
 
 	var t interface{}
-	t, err = withDeadline(serviceName, ctx, req, s.existBiz)
+	t, err = bizFunc(s.existBiz).withDeadline(serviceName, ctx, req)
 	if err != nil {
 		return nil, err
 	}

@@ -23,7 +23,7 @@ func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := withDeadline(serviceName, ctx, req, s.copyBiz, peerAddr)
+	t, err := bizFunc(s.copyBiz).withDeadline(serviceName, ctx, req, peerAddr)
 	if err != nil {
 		return nil, err
 	}

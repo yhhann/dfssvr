@@ -19,7 +19,7 @@ func (s *DFSServer) NegotiateChunkSize(ctx context.Context, req *transfer.Negoti
 	peerAddr := getPeerAddressString(ctx)
 	log.Printf("%s, client: %s, %v", serviceName, peerAddr, req)
 
-	t, err := withDeadline("NegotiateChunkSize", ctx, req, s.negotiateBiz)
+	t, err := bizFunc(s.negotiateBiz).withDeadline("NegotiateChunkSize", ctx, req)
 	if err != nil {
 		return nil, err
 	}

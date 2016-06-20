@@ -22,7 +22,7 @@ func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := withDeadline(serviceName, ctx, req, s.duplicateBiz, peerAddr)
+	t, err := bizFunc(s.duplicateBiz).withDeadline(serviceName, ctx, req, peerAddr)
 	if err != nil {
 		return nil, err
 	}

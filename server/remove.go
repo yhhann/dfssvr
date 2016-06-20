@@ -29,7 +29,7 @@ func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq)
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := withDeadline(serviceName, ctx, req, s.removeBiz, peerAddr, clientDesc)
+	t, err := bizFunc(s.removeBiz).withDeadline(serviceName, ctx, req, peerAddr, clientDesc)
 	if err != nil {
 		return nil, err
 	}

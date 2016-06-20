@@ -19,7 +19,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 	serviceName := "PutFile"
 	peerAddr := getPeerAddressString(stream.Context())
 
-	return withStreamDeadline(serviceName, nil, stream, s.putFileStream, serviceName, peerAddr)
+	return streamFunc(s.putFileStream).withStreamDeadline(serviceName, nil, stream, serviceName, peerAddr)
 }
 
 // putFileStream receives file content from client and saves to storage.

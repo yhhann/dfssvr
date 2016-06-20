@@ -22,7 +22,7 @@ func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*t
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := withDeadline(serviceName, ctx, req, s.getByMd5Biz, peerAddr)
+	t, err := bizFunc(s.getByMd5Biz).withDeadline(serviceName, ctx, req, peerAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +93,7 @@ func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := withDeadline(serviceName, ctx, req, s.existByMd5Biz)
-
+	t, err := bizFunc(s.existByMd5Biz).withDeadline(serviceName, ctx, req)
 	if err != nil {
 		return nil, err
 	}

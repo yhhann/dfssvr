@@ -17,13 +17,10 @@ import (
 // streamFunc represents function which process stream operation.
 type streamFunc func(interface{}, interface{}, []interface{}) error
 
-// bizFunc represents function which process biz logic.
-type bizFunc func(interface{}, interface{}, []interface{}) (interface{}, error)
-
 // withStreamDeadline processes a stream grpc calling with deadline.
-func withStreamDeadline(serviceName string, req interface{}, stream interface{}, f streamFunc, args ...interface{}) error {
+func (f streamFunc) withStreamDeadline(serviceName string, req interface{}, stream interface{}, args ...interface{}) error {
 	if grpcStream, ok := stream.(grpc.Stream); ok {
-		_, err := withDeadline(serviceName, grpcStream, req, streamBizFunc, f, args)
+		_, err := bizFunc(streamBizFunc).withDeadline(serviceName, grpcStream, req, f, args)
 
 		return err
 	}
@@ -31,8 +28,11 @@ func withStreamDeadline(serviceName string, req interface{}, stream interface{},
 	return f(req, stream, args)
 }
 
+// bizFunc represents function which process biz logic.
+type bizFunc func(interface{}, interface{}, []interface{}) (interface{}, error)
+
 // withDeadline processes a normal grpc calling with deadline.
-func withDeadline(serviceName string, env interface{}, req interface{}, f bizFunc, args ...interface{}) (r interface{}, e error) {
+func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface{}, args ...interface{}) (r interface{}, e error) {
 	startTime := time.Now()
 
 	entry(serviceName)
