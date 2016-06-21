@@ -106,8 +106,9 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 
 	defer func() {
 		if err != nil {
-			(*handler).Remove(inf.Id, inf.Domain)
-			err = fmt.Errorf("remove error: %v, client %s", err, peerAddr)
+			if _, _, er := (*handler).Remove(inf.Id, inf.Domain); er != nil {
+				log.Printf("remove error: %v, client %s", er, peerAddr)
+			}
 			return
 		}
 		log.Printf("PutFile, succeeded to finish file: %s, elapse %d, rate %d kbit/s\n", inf, nsecs, rate)
@@ -123,10 +124,9 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 		Description: fmt.Sprintf("%s[PutFile], client: %s, dst: %s, size: %d",
 			metadata.SucCreate.String(), peerAddr, (*handler).Name(), inf.Size),
 	}
-	err = s.eventOp.SaveEvent(event)
-	if err != nil {
-		err = fmt.Errorf("save event error: %v, client %s", err, peerAddr)
-		return
+	if er := s.eventOp.SaveEvent(event); er != nil {
+		// log into file instead return.
+		log.Printf("%s, error: %v", event.String(), er)
 	}
 
 	err = stream.SendAndClose(
@@ -149,10 +149,8 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 		Timestamp: time.Now(),
 		Type:      metadata.CreateType.String(),
 	}
-	err = s.spaceOp.SaveSpaceLog(slog)
-	if err != nil {
-		err = fmt.Errorf("save space log error: %v, client %s", err, peerAddr)
-		return
+	if er := s.spaceOp.SaveSpaceLog(slog); er != nil {
+		log.Printf("%s, error: %v", slog.String(), er)
 	}
 
 	instrumentPutFile(inf.Size, rate, serviceName)

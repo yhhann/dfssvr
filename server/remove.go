@@ -65,7 +65,10 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 		Description: fmt.Sprintf("%s, client %s\n%s", metadata.CommandDelete.String(),
 			peerAddr, clientDesc),
 	}
-	s.eventOp.SaveEvent(event)
+	if er := s.eventOp.SaveEvent(event); er != nil {
+		// log into file instead return.
+		log.Printf("%s, error: %v", event.String(), er)
+	}
 
 	rep := &transfer.RemoveFileRep{}
 	result := false
@@ -106,7 +109,9 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 			Timestamp: time.Now(),
 			Type:      metadata.DeleteType.String(),
 		}
-		s.spaceOp.SaveSpaceLog(slog)
+		if er := s.spaceOp.SaveSpaceLog(slog); er != nil {
+			log.Printf("%s, error: %v", slog.String(), er)
+		}
 	}
 
 	// log the remove result for audit.
@@ -119,7 +124,10 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 		Description: fmt.Sprintf("%s, client %s, command %s, result %t, from %v",
 			metadata.SucDelete.String(), peerAddr, event.Id.Hex(), result, p.Name()),
 	}
-	s.eventOp.SaveEvent(resultEvent)
+	if er := s.eventOp.SaveEvent(resultEvent); er != nil {
+		// log into file instead return.
+		log.Printf("%s, error: %v", event.String(), er)
+	}
 
 	// TODO(hanyh): monitor remove.
 

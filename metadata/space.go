@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -42,6 +43,12 @@ type SpaceLog struct {
 	Size      int64         `bson:"size"`      // length
 	Timestamp time.Time     `bson:"timestamp"` // timestamp
 	Type      string        `bson:"type"`      // type
+}
+
+// String returns a string for logging into file.
+func (s *SpaceLog) String() string {
+	return fmt.Sprintf("SpaceLog[Domain %d, Uid %s, Fid %s, Biz %s, Size %d, Timestamp %v, Type %s]",
+		s.Domain, s.Uid, s.Fid, s.Biz, s.Size, s.Timestamp, s.Type)
 }
 
 type SpaceLogOp struct {

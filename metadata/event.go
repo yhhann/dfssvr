@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"fmt"
 	"strings"
 
 	"gopkg.in/mgo.v2"
@@ -74,6 +75,12 @@ type Event struct {
 	Fid         string        `bson:"fid"`                 // fid
 	Elapse      int64         `bson:"elapse,omitempty"`    // elapse in nanosecond
 	Node        string        `bson:"nodeId,omitempty"`    // name of node which generats this event
+}
+
+// String returns a string for logging into file.
+func (e *Event) String() string {
+	return fmt.Sprintf("Event[Type %s, Timestamp %d, EventId %s, ThreadId %s, Domain %d, EType %s, Fid %s, Elapse %d, Node %s, Description %s]",
+		e.Type, e.Timestamp, e.EventId, e.ThreadId, e.Domain, e.EType.String(), e.Fid, e.Elapse, e.Node, e.Description)
 }
 
 type EventOp struct {

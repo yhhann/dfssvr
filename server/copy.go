@@ -103,7 +103,10 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 		Timestamp: time.Now(),
 		Type:      metadata.CreateType.String(),
 	}
-	s.spaceOp.SaveSpaceLog(slog)
+	err = s.spaceOp.SaveSpaceLog(slog)
+	if err != nil {
+		log.Printf("%s, error: %v", slog.String(), err)
+	}
 
 	event := &metadata.Event{
 		EType:     metadata.SucCreate,
@@ -111,10 +114,17 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 		Domain:    inf.Domain,
 		Fid:       inf.Id,
 		Elapse:    time.Since(startTime).Nanoseconds(),
+		Type:      metadata.SucCreate.String(), // compatible with 1.0
+		EventId:   "",                          // compatible with 1.0
+		ThreadId:  "",                          // compatible with 1.0
 		Description: fmt.Sprintf("%s[Copy], client: %s, srcFid: %s, dst: %s", metadata.SucCreate.String(),
 			peerAddr, req.SrcFid, (*handler).Name()),
 	}
-	s.eventOp.SaveEvent(event)
+	err = s.eventOp.SaveEvent(event)
+	if err != nil {
+		// log into file instead return.
+		log.Printf("%s, error: %v", event.String(), err)
+	}
 
 	return &transfer.CopyRep{
 		Fid: inf.Id,

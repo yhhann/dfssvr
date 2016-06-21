@@ -58,9 +58,11 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 			Description: fmt.Sprintf("%s, client %s", metadata.FailDupl.String(), peerAddr),
 			Elapse:      time.Since(startTime).Nanoseconds(),
 		}
-		s.eventOp.SaveEvent(event)
+		if er := s.eventOp.SaveEvent(event); er != nil {
+			// log into file instead return.
+			log.Printf("%s, error: %v", event.String(), er)
+		}
 
-		log.Printf("Failed to duplicate %s[%d], error %v", req.Id, req.Domain, err)
 		return nil, err
 	}
 
@@ -72,7 +74,10 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 		Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucDupl.String(), peerAddr, did),
 		Elapse:      time.Since(startTime).Nanoseconds(),
 	}
-	s.eventOp.SaveEvent(event)
+	if er := s.eventOp.SaveEvent(event); er != nil {
+		// log into file instead return.
+		log.Printf("%s, error: %v", event.String(), er)
+	}
 
 	return &transfer.DuplicateRep{
 		Id: did,

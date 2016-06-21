@@ -61,7 +61,10 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 			Fid:         oid,
 			Description: fmt.Sprintf("%s, client %s", metadata.FailMd5.String(), peerAddr),
 		}
-		s.eventOp.SaveEvent(event)
+		if er := s.eventOp.SaveEvent(event); er != nil {
+			// log into file instead return.
+			log.Printf("%s, error: %v", event.String(), er)
+		}
 
 		return nil, err
 	}
@@ -73,7 +76,10 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 		Fid:         oid,
 		Description: fmt.Sprintf("%s, client %s, did %s", metadata.SucMd5.String(), peerAddr, did),
 	}
-	s.eventOp.SaveEvent(event)
+	if er := s.eventOp.SaveEvent(event); er != nil {
+		// log into file instead return.
+		log.Printf("%s, error: %v", event.String(), er)
+	}
 
 	log.Printf("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
 		oid, req.Md5, req.Domain, req.Size)

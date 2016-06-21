@@ -49,7 +49,10 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 				Fid:         req.Id,
 				Description: fmt.Sprintf("%s, client %s", metadata.FailRead.String(), peerAddr),
 			}
-			s.eventOp.SaveEvent(event)
+			if er := s.eventOp.SaveEvent(event); er != nil {
+				// log into file instead return.
+				log.Printf("%s, error: %v", event.String(), er)
+			}
 		}
 		return err
 	}
