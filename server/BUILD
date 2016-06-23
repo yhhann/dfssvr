@@ -6,6 +6,7 @@ go_library(
   name = "go_default_library",
   srcs = glob(["*.go"], exclude = ["*_test.go"]),
   deps = [
+    "//dfs/conf:go_default_library",
     "//dfs/discovery:go_default_library",
     "//dfs/fileop:go_default_library",
     "//dfs/instrument:go_default_library",

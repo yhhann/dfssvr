@@ -13,6 +13,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/peer"
 
+	"jingoal.com/dfs/conf"
 	disc "jingoal.com/dfs/discovery"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/notice"
@@ -117,6 +118,8 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string,
 	r := disc.NewZKDfsServerRegister(zk)
 	server.register = r
 	server.notice = zk
+
+	conf.NewConf(zk)
 
 	spaceOp, err := metadata.NewSpaceLogOp(dbAddr.SlogDbName, dbAddr.SlogDbUri)
 	if err != nil {
