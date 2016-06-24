@@ -22,6 +22,11 @@ import (
 	"jingoal.com/dfs/recovery"
 )
 
+const (
+	confPath          = "/shard/conf"
+	prefixOfDFSServer = "dfs.svr."
+)
+
 var (
 	logDir            = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
 	heartbeatInterval = flag.Int("hb-interval", 5, "time interval in seconds of heart beat")
@@ -119,7 +124,7 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string,
 	server.register = r
 	server.notice = zk
 
-	conf.NewConf(zk)
+	conf.NewConf(confPath, prefixOfDFSServer, name, zk)
 
 	spaceOp, err := metadata.NewSpaceLogOp(dbAddr.SlogDbName, dbAddr.SlogDbUri)
 	if err != nil {

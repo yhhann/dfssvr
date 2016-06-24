@@ -11,17 +11,19 @@ import (
 )
 
 const (
-	confPath    = "/shard/conf"
 	confBufSize = 10000
 )
 
+// Conf holds the config for flag.
 type Conf struct {
-	notice notice.Notice
+	notice   notice.Notice
+	prefix   string
+	confPath string
 }
 
 func (conf *Conf) startConfUpdateRoutine() {
 	routineMap := make(map[string]interface{})
-	changes, errs := conf.notice.CheckChildren(confPath)
+	changes, errs := conf.notice.CheckChildren(conf.confPath)
 
 	kvs := make(chan string, confBufSize)
 	go func() {
@@ -29,14 +31,19 @@ func (conf *Conf) startConfUpdateRoutine() {
 			select {
 			case confs := <-changes:
 				for _, confName := range confs {
-					path := filepath.Join(confPath, confName)
+					// filetered by prefix.
+					if !strings.HasPrefix(confName, conf.prefix) {
+						continue
+					}
+
+					path := filepath.Join(conf.confPath, confName)
 					if _, ok := routineMap[path]; !ok {
 						vChan, eChan := conf.notice.CheckDataChange(path)
 						go func(cn string, p string, vc <-chan []byte, ec <-chan error) {
 							for {
 								select {
 								case v := <-vc:
-									kvs <- filepath.Join(cn, string(v))
+									kvs <- filepath.Join(strings.TrimPrefix(cn, conf.prefix), string(v))
 								case e := <-ec:
 									if e == zk.ErrNoNode {
 										log.Printf("%v, %s, routine broken", e, cn)
@@ -69,10 +76,12 @@ func (conf *Conf) startConfUpdateRoutine() {
 	}()
 }
 
-func NewConf(notice notice.Notice) *Conf {
-	initFlag()
+func NewConf(confPath string, prefix string, nodeName string, notice notice.Notice) *Conf {
+	initFlag(nodeName)
 	conf := &Conf{
-		notice: notice,
+		confPath: confPath,
+		prefix:   prefix,
+		notice:   notice,
 	}
 	conf.startConfUpdateRoutine()
 	return conf
