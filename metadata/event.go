@@ -111,7 +111,7 @@ func (op *EventOp) SaveEvent(e *Event) error {
 		return ObjectIdInvalidError
 	}
 	if e.Node == "" {
-		e.Node = transfer.NodeName
+		e.Node = transfer.ServerId
 	}
 	return op.execute(func(session *mgo.Session) error {
 		return session.DB(op.dbName).C(EVENT_COL).Insert(*e)

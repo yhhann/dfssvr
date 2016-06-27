@@ -19,8 +19,9 @@ import (
 )
 
 var (
+	serverId = flag.String("server-name", "test-dfs-svr", "unique name")
+
 	lsnAddr     = flag.String("listen-addr", ":10000", "listen address")
-	name        = flag.String("server-name", "test-dfs-svr", "unique name")
 	zkAddr      = flag.String("zk-addr", "127.0.0.1:2181", "zookeeper address")
 	timeout     = flag.Int("zk-timeout", 15000, "zookeeper timeout")
 	shardDbName = flag.String("shard-name", "shard", "shard database name")
@@ -44,7 +45,7 @@ func checkFlags() {
 		os.Exit(0)
 	}
 
-	if *name == "" {
+	if *serverId == "" {
 		log.Println("Error: flag --server-name is required.")
 		os.Exit(1)
 	}
@@ -132,7 +133,8 @@ func main() {
 
 	var dfsServer *server.DFSServer
 	for {
-		dfsServer, err = server.NewDFSServer(lis.Addr(), *name, dbAddr, *zkAddr, *timeout)
+		transfer.ServerId = *serverId
+		dfsServer, err = server.NewDFSServer(lis.Addr(), *serverId, dbAddr, *zkAddr, *timeout)
 		if err != nil {
 			log.Printf("Failed to create DFS Server: %v, try again.", err)
 			time.Sleep(time.Duration(*server.HealthCheckInterval) * time.Second)

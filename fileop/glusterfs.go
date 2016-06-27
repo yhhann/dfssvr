@@ -285,7 +285,7 @@ func (h *GlusterHandler) IsHealthy() bool {
 		return false
 	}
 
-	magicDirPath := filepath.Join(h.VolBase, "health", transfer.NodeName)
+	magicDirPath := filepath.Join(h.VolBase, "health", transfer.ServerId)
 	if err := h.Volume.MkdirAll(magicDirPath, 0755); err != nil {
 		log.Printf("IsHealthy error: %v", err)
 		return false
