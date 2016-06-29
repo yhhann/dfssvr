@@ -376,15 +376,20 @@ func (f GlusterFile) Read(p []byte) (int, error) {
 // Write writes len(p) bytes to the file.
 // Returns number of bytes written and an error if any.
 func (f GlusterFile) Write(p []byte) (int, error) {
-	l, err := f.glf.Write(p)
+	if len(p) == 0 { // fix bug of gfapi.
+		return 0, nil
+	}
+
+	// if len(p) is zero, glf.Write() will panic.
+	n, err := f.glf.Write(p)
 	if err != nil {
 		return 0, err
 	}
 
 	f.md5.Write(p)
-	f.info.Size += int64(l)
+	f.info.Size += int64(n)
 
-	return l, nil
+	return n, nil
 }
 
 // Close closes an open GlusterFile.
