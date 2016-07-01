@@ -7,7 +7,7 @@
 // s := DfsServer{Id: "myServer"}
 //
 // if err := r.Register(&s); err != nil {
-// 	log.Printf("register error %v", err)
+// 	glog.Infof("register error %v", err)
 // }
 //
 package discovery

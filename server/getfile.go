@@ -3,8 +3,9 @@ package server
 import (
 	"fmt"
 	"io"
-	"log"
 	"time"
+
+	"github.com/golang/glog"
 
 	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/instrument"
@@ -17,7 +18,7 @@ import (
 func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransfer_GetFileServer) (err error) {
 	serviceName := "GetFile"
 	peerAddr := getPeerAddressString(stream.Context())
-	log.Printf("%s start, client: %s, %v", serviceName, peerAddr, req)
+	glog.Infof("%s start, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Id) == 0 || req.Domain <= 0 {
 		return fmt.Errorf("invalid request [%v]", req)
@@ -51,7 +52,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			}
 			if er := s.eventOp.SaveEvent(event); er != nil {
 				// log into file instead return.
-				log.Printf("%s, error: %v", event.String(), er)
+				glog.Warningf("%s, error: %v", event.String(), er)
 			}
 		}
 		return err
@@ -67,7 +68,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 				Name:  serviceName,
 				Value: float64(expected.Nanoseconds()),
 			}
-			log.Printf("%s, timeout return early, expected %v, given %v", serviceName, expected, given)
+			glog.Warningf("%s, timeout return early, expected %v, given %v", serviceName, expected, given)
 			return err
 		}
 	}
@@ -92,12 +93,12 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			rate := off * 8 * 1e6 / nsecs // in kbit/s
 
 			instrumentGetFile(off, rate, serviceName)
-			log.Printf("GetFile ok, %s, length %d, elapse %d, rate %d kbit/s", req, off, nsecs, rate)
+			glog.Infof("GetFile ok, %s, length %d, elapse %d, rate %d kbit/s", req, off, nsecs, rate)
 
 			return nil
 		}
 		if err != nil {
-			log.Printf("GetFile, read source error, %s, %v", req.Id, err)
+			glog.Warningf("GetFile, read source error, %s, %v", req.Id, err)
 			return err
 		}
 		err = stream.Send(&transfer.GetFileRep{
@@ -110,7 +111,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			},
 		})
 		if err != nil {
-			log.Printf("GetFile, send to client error, %s, %v", req.Id, err)
+			glog.Warningf("GetFile, send to client error, %s, %v", req.Id, err)
 			return err
 		}
 

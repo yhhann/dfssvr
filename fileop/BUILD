@@ -10,6 +10,7 @@ go_library(
     "//dfs/proto/transfer:go_default_library",
     "//dfs/recovery:go_default_library",
     "//dfs/util:go_default_library",
+    "//third-party-go/vendor/github.com/golang/glog:go_default_library",
     "//third-party-go/vendor/github.com/kshlm/gogfapi/gfapi:go_default_library",
     "//third-party-go/vendor/gopkg.in/mgo.v2:go_default_library",
     "//third-party-go/vendor/gopkg.in/mgo.v2/bson:go_default_library",

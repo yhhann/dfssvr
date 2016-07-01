@@ -7,6 +7,7 @@ go_library(
   srcs = glob(["*.go"], exclude = ["*_test.go"]),
   deps = [
     "//dfs/notice:go_default_library",
+    "//third-party-go/vendor/github.com/golang/glog:go_default_library",
     "//third-party-go/vendor/github.com/golang/protobuf/proto:go_default_library",
     "//third-party-go/vendor/github.com/samuel/go-zookeeper/zk:go_default_library",
   ],

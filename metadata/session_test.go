@@ -1,9 +1,10 @@
 package metadata
 
 import (
-	"log"
 	"sync"
 	"testing"
+
+	"github.com/golang/glog"
 )
 
 func TestSM(t *testing.T) {
@@ -17,10 +18,10 @@ func TestSM(t *testing.T) {
 			defer wg.Done()
 			s, err := sm.GetSession("mongodb://192.168.55.193:27017")
 			if err != nil {
-				log.Println(err)
+				glog.Infoln(err)
 				return
 			}
-			log.Printf("%p", s)
+			glog.Infof("%p", s)
 		}()
 	}
 

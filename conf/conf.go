@@ -1,10 +1,10 @@
 package conf
 
 import (
-	"log"
 	"path/filepath"
 	"strings"
 
+	"github.com/golang/glog"
 	"github.com/samuel/go-zookeeper/zk"
 
 	"jingoal.com/dfs/notice"
@@ -46,21 +46,21 @@ func (conf *Conf) startConfUpdateRoutine() {
 									kvs <- filepath.Join(strings.TrimPrefix(cn, conf.prefix), string(v))
 								case e := <-ec:
 									if e == zk.ErrNoNode {
-										log.Printf("%v, %s, routine broken", e, cn)
+										glog.Infof("%v, %s, watcher routine closed", e, cn)
 										delete(routineMap, p)
 										return
 									}
-									log.Printf("%v", e)
+									glog.Warningf("%v", e)
 								}
 							}
 						}(confName, path, vChan, eChan)
 
 						routineMap[path] = struct{}{}
-						log.Printf("Start a routine for %s", confName)
+						glog.Infof("Start a routine for %s", confName)
 					}
 				}
 			case err := <-errs:
-				log.Printf("%v", err)
+				glog.Warningf("%v", err)
 			}
 		}
 	}()

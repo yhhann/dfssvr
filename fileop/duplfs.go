@@ -3,9 +3,9 @@ package fileop
 import (
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
@@ -67,7 +67,7 @@ func (duplfs *DuplFs) Find(gridfs *mgo.GridFS, givenId string) (f *mgo.GridFile,
 		var ref *metadata.Ref
 		ref, err = duplfs.LookupRefById(*realId)
 		if err != nil {
-			log.Printf("ref not found: %s, error: %v", givenId, err)
+			glog.Warningf("ref not found: %s, error: %v", givenId, err)
 			return
 		}
 		if ref == nil {

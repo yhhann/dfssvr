@@ -9,6 +9,7 @@ go_library(
     "//dfs/notice:go_default_library",
     "//dfs/proto/discovery:go_default_library",
     "//dfs/proto/transfer:go_default_library",
+    "//third-party-go/vendor/github.com/golang/glog:go_default_library",
     "//third-party-go/vendor/github.com/golang/protobuf/proto:go_default_library",
   ],
 )

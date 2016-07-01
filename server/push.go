@@ -1,9 +1,10 @@
 package server
 
 import (
-	"log"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 
 	"jingoal.com/dfs/proto/discovery"
 )
@@ -15,7 +16,7 @@ func (s *DFSServer) GetDfsServers(req *discovery.GetDfsServersReq, stream discov
 	observer := make(chan struct{}, 100)
 	s.register.AddObserver(observer, clientId)
 
-	log.Printf("Client %s connected.", clientId)
+	glog.Infof("Client %s connected.", clientId)
 
 	ticker := time.NewTicker(time.Duration(*heartbeatInterval) * time.Second)
 outLoop:
@@ -35,7 +36,7 @@ outLoop:
 
 	ticker.Stop()
 	s.register.RemoveObserver(observer)
-	log.Printf("Client connection closed, client: %s", clientId)
+	glog.Infof("Client connection closed, client: %s", clientId)
 
 	return nil
 }
@@ -80,9 +81,9 @@ func (s *DFSServer) sendDfsServerMap(req *discovery.GetDfsServersReq, stream dis
 	}
 
 	clientId := strings.Join([]string{req.GetClient().Id, getPeerAddressString(stream.Context())}, "/")
-	log.Printf("Succeeded to send dfs server list to client: %s, Servers:", clientId)
+	glog.Infof("Succeeded to send dfs server list to client: %s, Servers:", clientId)
 	for i, s := range ss {
-		log.Printf("\t\t%d. DfsServer: %s\n", i+1, strings.Join([]string{s.Id, s.Uri, s.Status.String()}, "/"))
+		glog.Infof("\t\t%d. DfsServer: %s\n", i+1, strings.Join([]string{s.Id, s.Uri, s.Status.String()}, "/"))
 	}
 
 	return nil

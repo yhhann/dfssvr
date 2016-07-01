@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"time"
+
+	"github.com/golang/glog"
 
 	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/instrument"
@@ -46,7 +47,7 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 		req, err := stream.Recv()
 		if err == io.EOF {
 			if file == nil {
-				log.Printf("PutFile error, no file info")
+				glog.Warningf("PutFile error, no file info")
 				return stream.SendAndClose(
 					&transfer.PutFileRep{
 						File: &transfer.FileInfo{
@@ -57,7 +58,7 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 
 			err := s.finishPutFile(file, handler, stream, startTime, serviceName, peerAddr)
 			if err != nil {
-				log.Printf("PutFile error, %v", err)
+				glog.Warningf("PutFile error, %v", err)
 				return err
 			}
 
@@ -68,21 +69,21 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 			if file != nil {
 				logInf = file.GetFileInfo()
 			}
-			log.Printf("PutFile error, file %s, %v", logInf, err)
+			glog.Warningf("PutFile error, file %s, %v", logInf, err)
 			return err
 		}
 
 		if file == nil {
 			reqInfo = req.GetInfo()
-			log.Printf("%s start, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
+			glog.Infof("%s start, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
 			if reqInfo == nil {
-				log.Printf("PutFile error, no file info")
+				glog.Warningf("PutFile error, no file info")
 				return errors.New("PutFile error: no file info")
 			}
 
 			file, handler, err = s.createFile(reqInfo, stream, startTime)
 			if err != nil {
-				log.Printf("PutFile error, create file %v, error %v", reqInfo, err)
+				glog.Warningf("PutFile error, create file %v, error %v", reqInfo, err)
 				return err
 			}
 			defer file.Close()
@@ -107,11 +108,11 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 	defer func() {
 		if err != nil {
 			if _, _, er := (*handler).Remove(inf.Id, inf.Domain); er != nil {
-				log.Printf("remove error: %v, client %s", er, peerAddr)
+				glog.Warningf("remove error: %v, client %s", er, peerAddr)
 			}
 			return
 		}
-		log.Printf("PutFile, succeeded to finish file: %s, elapse %d, rate %d kbit/s\n", inf, nsecs, rate)
+		glog.Infof("PutFile, succeeded to finish file: %s, elapse %d, rate %d kbit/s\n", inf, nsecs, rate)
 	}()
 
 	// save a event for create file ok.
@@ -126,7 +127,7 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 	}
 	if er := s.eventOp.SaveEvent(event); er != nil {
 		// log into file instead return.
-		log.Printf("%s, error: %v", event.String(), er)
+		glog.Warningf("%s, error: %v", event.String(), er)
 	}
 
 	err = stream.SendAndClose(
@@ -138,8 +139,6 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 		return
 	}
 
-	log.Printf("PutFile, succeeded to send receipt %s to %s", inf.Id, peerAddr)
-
 	slog := &metadata.SpaceLog{
 		Domain:    inf.Domain,
 		Uid:       fmt.Sprintf("%d", inf.User),
@@ -150,7 +149,7 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 		Type:      metadata.CreateType.String(),
 	}
 	if er := s.spaceOp.SaveSpaceLog(slog); er != nil {
-		log.Printf("%s, error: %v", slog.String(), er)
+		glog.Warningf("%s, error: %v", slog.String(), er)
 	}
 
 	instrumentPutFile(inf.Size, rate, serviceName)
@@ -167,7 +166,7 @@ func (s *DFSServer) createFile(reqInfo *transfer.FileInfo, stream transfer.FileT
 				Name:  "PutFile",
 				Value: float64(expected.Nanoseconds()),
 			}
-			log.Printf("PutFile, timeout return early, expected %v, given %v", expected, given)
+			glog.Warningf("PutFile, timeout return early, expected %v, given %v", expected, given)
 			return nil, nil, err
 		}
 	}

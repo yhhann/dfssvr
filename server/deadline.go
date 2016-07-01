@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/golang/glog"
@@ -46,13 +45,13 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 
 		if se, ok := e.(transport.StreamError); ok && (se.Code == codes.DeadlineExceeded) || (e == context.DeadlineExceeded) {
 			instrument.TimeoutHistogram <- me
-			glog.Infof("%s, deadline exceeded, %v seconds.", serviceName, elapse.Seconds())
+			glog.V(2).Infof("%s, deadline exceeded, %v seconds.", serviceName, elapse.Seconds())
 		} else if e != nil {
 			instrument.FailedCounter <- me
-			glog.Infof("%s error %v, in %v seconds.", serviceName, e, elapse.Seconds())
+			glog.V(2).Infof("%s error %v, in %v seconds.", serviceName, e, elapse.Seconds())
 		} else {
 			instrument.SuccessDuration <- me
-			glog.Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
+			glog.V(2).Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
 		}
 
 		exit(serviceName)
@@ -62,7 +61,7 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 		timeout := deadline.Sub(startTime)
 
 		if timeout <= 0 {
-			log.Printf("%s timeout is %v, deadline is %v", serviceName, timeout, deadline)
+			glog.Infof("%s timeout is %v, deadline is %v", serviceName, timeout, deadline)
 			e = context.DeadlineExceeded
 			return
 		}

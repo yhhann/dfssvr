@@ -2,7 +2,8 @@ package server
 
 import (
 	"fmt"
-	"log"
+
+	"github.com/golang/glog"
 
 	"golang.org/x/net/context"
 
@@ -16,9 +17,9 @@ func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (result *
 	peerAddr := getPeerAddressString(ctx)
 	defer func() {
 		if err != nil {
-			log.Printf("%s, client: %s, %v, error %v", serviceName, peerAddr, req, err)
+			glog.Warningf("%s, client: %s, %v, error %v", serviceName, peerAddr, req, err)
 		} else {
-			log.Printf("%s, client: %s, %v, result %t", serviceName, peerAddr, req, result.Result)
+			glog.Infof("%s, client: %s, %v, result %t", serviceName, peerAddr, req, result.Result)
 		}
 	}()
 
@@ -67,7 +68,7 @@ func (s *DFSServer) existBiz(c interface{}, r interface{}, args []interface{}) (
 
 	result, err := s.exist(req.Id, req.Domain)
 	if err != nil {
-		log.Printf("Failed to exist %s, %d, %v", req.Id, req.Domain, err)
+		glog.Warningf("Failed to exist %s, %d, %v", req.Id, req.Domain, err)
 	}
 
 	return &transfer.ExistRep{

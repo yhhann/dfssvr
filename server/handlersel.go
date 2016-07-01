@@ -3,12 +3,12 @@ package server
 import (
 	"flag"
 	"fmt"
-	"log"
 	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2/bson"
 
 	"jingoal.com/dfs/fileop"
@@ -115,7 +115,7 @@ func (hs *HandlerSelector) updateHandler(shard *metadata.Shard, op int) {
 func (hs *HandlerSelector) deleteHandler(handlerName string) {
 	if sh, ok := hs.getShardHandler(handlerName); ok {
 		if err := sh.handler.Close(); err != nil {
-			log.Printf("Failed to close the old handler: %v", sh.handler.Name())
+			glog.Warningf("Failed to close the old handler: %v", sh.handler.Name())
 		}
 
 		sh.Shutdown()
@@ -134,25 +134,25 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 	}
 
 	if err != nil {
-		log.Printf("Failed to create handler, shard: %v, error: %v", shard, err)
+		glog.Warningf("Failed to create handler, shard: %v, error: %v", shard, err)
 		return
 	}
 
 	if shard.ShdType == metadata.DegradeServer {
 		if hs.degradeShardHandler != nil {
-			log.Printf("Failed to create degrade server, since we already have one, shard: %v", shard)
+			glog.Warningf("Failed to create degrade server, since we already have one, shard: %v", shard)
 			return
 		}
 
 		dh := fileop.NewDegradeHandler(handler, hs.dfsServer.reOp)
 		hs.degradeShardHandler = NewShardHandler(dh, statusOk, hs)
-		log.Printf("Succeeded to create degrade handler, shard: %s", shard.Name)
+		glog.Infof("Succeeded to create degrade handler, shard: %s", shard.Name)
 		return
 	}
 
 	if sh, ok := hs.getShardHandler(handler.Name()); ok {
 		if err := sh.Shutdown(); err != nil {
-			log.Printf("Failed to shutdown old handler: %v", sh.handler.Name())
+			glog.Warningf("Failed to shutdown old handler: %v", sh.handler.Name())
 		}
 	}
 
@@ -160,7 +160,7 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 
 	hs.addRecovery(handler.Name(), sh.recoveryChan)
 
-	log.Printf("Succeeded to create handler, shard: %s", shard.Name)
+	glog.Infof("Succeeded to create handler, shard: %s", shard.Name)
 }
 
 // getDfsFileHandler returns perfect file handlers to process file.
@@ -202,7 +202,7 @@ func (hs *HandlerSelector) checkOrDegrade(handler *fileop.DFSFileHandler) (*file
 
 	dh := hs.degradeShardHandler.handler
 	if hs.degradeShardHandler.status == statusOk {
-		log.Printf("!!! server %s degrade to %s", (*handler).Name(), dh.Name())
+		glog.Errorf("!!! server %s degrade to %s", (*handler).Name(), dh.Name())
 		return &dh, nil
 	}
 
@@ -236,7 +236,7 @@ func (hs *HandlerSelector) getDFSFileHandlerForRead(domain int64) (*fileop.DFSFi
 	// Need not return err, since we will verify the pair of n and m
 	// outside this function.
 	if err != nil {
-		log.Printf("%v", err)
+		glog.Warningf("Ignored error: %v", err)
 	}
 
 	return n, m, nil
@@ -268,7 +268,7 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 	s := hs.dfsServer
 	go func() {
 		data, errs := s.notice.CheckDataChange(notice.ShardServerPath)
-		log.Printf("Succeeded to start routine for checking shard servers.")
+		glog.Infof("Succeeded to start routine for checking shard servers.")
 
 		for {
 			select {
@@ -276,21 +276,21 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 				serverName := string(v)
 				shard, err := s.mOp.LookupShardByName(serverName)
 				if err != nil {
-					log.Printf("Failed to lookup shard %s, error: %v", serverName, err)
+					glog.Warningf("Failed to lookup shard %s, error: %v", serverName, err)
 					break
 				}
 
 				// TODO(hanyh): refine it.
 				hs.updateHandler(shard, 1)
 			case err := <-errs:
-				log.Printf("Failed to process shard notice, error: %v", err)
+				glog.Warningf("Failed to process shard notice, error: %v", err)
 			}
 		}
 	}()
 
 	go func() {
 		data, errs := s.notice.CheckDataChange(notice.ShardChunkPath)
-		log.Printf("Succeeded to start routine for checking segment.")
+		glog.Infof("Succeeded to start routine for checking segment.")
 
 		for {
 			select {
@@ -298,7 +298,7 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 				segmentName := string(v)
 				domain, err := strconv.Atoi(segmentName)
 				if err != nil {
-					log.Printf("Failed to convert segment number %s, error %v", segmentName, err)
+					glog.Warningf("Failed to convert segment number %s, error %v", segmentName, err)
 					break
 				}
 
@@ -309,14 +309,14 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 
 				seg, err := s.mOp.LookupSegmentByDomain(int64(domain))
 				if err != nil {
-					log.Printf("Failed to lookup segment %d, error: %v", domain, err)
+					glog.Warningf("Failed to lookup segment %d, error: %v", domain, err)
 					break
 				}
 
 				// Update segment in selector.
 				hs.updateSegment(seg)
 			case err := <-errs:
-				log.Printf("Failed to process segment notice, error: %v", err)
+				glog.Warningf("Failed to process segment notice, error: %v", err)
 			}
 		}
 	}()
@@ -327,13 +327,13 @@ func (hs *HandlerSelector) startRevoveryDispatchRoutine() {
 	go func() {
 		ticker := time.NewTicker(time.Duration(*recoveryInterval) * time.Second)
 		defer ticker.Stop()
-		log.Printf("Succeeded to start routine for recovery dispatch.")
+		glog.Infof("Succeeded to start routine for recovery dispatch.")
 
 		for {
 			select {
 			case <-ticker.C:
 				if err := hs.dispatchRecoveryEvent(*recoveryBatchSize, int64(*recoveryInterval)); err != nil {
-					log.Printf("Recovery dispatch error, %v", err)
+					glog.Warningf("Recovery dispatch error, %v", err)
 				}
 			}
 		}
@@ -350,13 +350,13 @@ func (hs *HandlerSelector) dispatchRecoveryEvent(batchSize int, timeout int64) e
 	for _, e := range events {
 		h, err := hs.getDFSFileHandlerForWrite(e.Domain)
 		if err != nil {
-			log.Printf("Failed to get file handler for %d", e.Domain)
+			glog.Warningf("Failed to get file handler for %d", e.Domain)
 			continue
 		}
 
 		rec, ok := hs.getRecovery((*h).Name())
 		if !ok {
-			log.Printf("Failed to dispatch recovery event %s", e.String())
+			glog.Warningf("Failed to dispatch recovery event %s", e.String())
 			continue
 		}
 
@@ -383,7 +383,7 @@ func (hs *HandlerSelector) backfillSegment() {
 	defer hs.segmentLock.Unlock()
 
 	hs.segments = hs.dfsServer.mOp.FindAllSegmentsOrderByDomain()
-	log.Printf("Succeeded to backfill segment %d.", len(hs.segments))
+	glog.Infof("Succeeded to backfill segment %d.", len(hs.segments))
 }
 
 // FindPerfectSegment finds a perfect segment for domain.
@@ -406,7 +406,7 @@ func NewHandlerSelector(dfsServer *DFSServer) (*HandlerSelector, error) {
 	// Fill segment data.
 	hs.backfillSegment()
 	for _, seg := range hs.segments {
-		log.Printf("Segment: [Domain:%d, ns:%s, ms:%s]",
+		glog.Infof("Segment: [Domain:%d, ns:%s, ms:%s]",
 			seg.Domain, seg.NormalServer, seg.MigrateServer)
 	}
 
@@ -483,7 +483,7 @@ func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
 	case result := <-running:
 		return NewHandlerStatus(result)
 	case <-ticker.C:
-		log.Printf("check handler %v expired", handler.Name())
+		glog.Warningf("check handler %v expired", handler.Name())
 		return statusFailure
 	}
 }

@@ -1,10 +1,10 @@
 package fileop
 
 import (
-	"log"
 	"testing"
 	"time"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2/bson"
 
 	"jingoal.com/dfs/metadata"
@@ -159,5 +159,5 @@ func TestFindByMd5(t *testing.T) {
 		t.Errorf("Lookup file metadata error: %v", err)
 	}
 
-	log.Printf("%d, %s, %d, %s, %s", fm.Length, fm.MD5, fm.Domain, fm.UserId, fm.Biz)
+	glog.Infof("%d, %s, %d, %s, %s", fm.Length, fm.MD5, fm.Domain, fm.UserId, fm.Biz)
 }

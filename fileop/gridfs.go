@@ -2,8 +2,8 @@ package fileop
 
 import (
 	"fmt"
-	"log"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
@@ -23,7 +23,7 @@ type GridFsHandler struct {
 func (h *GridFsHandler) copySessionAndGridFS() (*mgo.Session, *mgo.GridFS) {
 	session, err := metadata.CopySession(h.Uri)
 	if err != nil {
-		log.Printf("Error, session is nil")
+		glog.Error("Error, session is nil")
 	}
 
 	return session, session.DB(h.Shard.Name).GridFS("fs")
@@ -134,7 +134,7 @@ func (h *GridFsHandler) Find(id string) (string, error) {
 		return "", fmt.Errorf("Invalid id, %T, %v", gridFile.Id(), gridFile.Id())
 	}
 
-	log.Printf("Succeeded to find file %s, return %s", id, oid.Hex())
+	glog.Infof("Succeeded to find file %s, return %s", id, oid.Hex())
 
 	return oid.Hex(), nil
 }
@@ -157,7 +157,7 @@ func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error)
 
 	result, err := h.duplfs.Delete(h.gridfs, id)
 	if err != nil {
-		log.Printf("Failed to remove file %s %d, error: %s", id, domain, err)
+		glog.Warningf("Failed to remove file %s %d, error: %s", id, domain, err)
 		return false, nil, err
 	}
 

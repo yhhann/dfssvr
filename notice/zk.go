@@ -1,11 +1,11 @@
 package notice
 
 import (
-	"log"
 	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -62,9 +62,9 @@ func (k *DfsZK) checkConnectEvent(ch <-chan zk.Event, okChan chan<- struct{}) {
 			switch ev.State {
 			case zk.StateConnecting:
 			case zk.StateConnected:
-				log.Printf("Succeeded to connect to zk[%v].", k.Addrs)
+				glog.Infof("Succeeded to connect to zk[%v].", k.Addrs)
 			case zk.StateHasSession:
-				log.Printf("Succeeded to get session from zk[%v].", k.Addrs)
+				glog.Infof("Succeeded to get session from zk[%v].", k.Addrs)
 				okChan <- struct{}{}
 			}
 		default:
@@ -92,7 +92,7 @@ func (k *DfsZK) CheckChildren(path string) (<-chan []string, <-chan error) {
 				errors <- evt.Err
 				return
 			}
-			log.Printf("event type: %v", evt.Type)
+			glog.V(2).Infof("event type: %v", evt.Type)
 		}
 	}()
 
@@ -165,7 +165,7 @@ func (k *DfsZK) Register(prefix string, data []byte, startCheckRoutine bool) (st
 						path := filepath.Join(filepath.Dir(prefix), s)
 						d, err := k.GetData(path)
 						if err != nil {
-							log.Printf("node lost %v, %v", path, err)
+							glog.Warningf("node lost %v, %v", path, err)
 							errors <- err
 							continue
 						}

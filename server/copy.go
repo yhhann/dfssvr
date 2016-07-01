@@ -3,9 +3,9 @@ package server
 import (
 	"fmt"
 	"io"
-	"log"
 	"time"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
 	"jingoal.com/dfs/metadata"
@@ -17,7 +17,7 @@ import (
 func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.CopyRep, error) {
 	serviceName := "Copy"
 	peerAddr := getPeerAddressString(ctx)
-	log.Printf("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.SrcFid) == 0 || req.SrcDomain <= 0 || req.DstDomain <= 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)
@@ -52,7 +52,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 			return nil, err
 		}
 
-		log.Printf("Copy is converted to duplicate, srcId: %s, srcDomain: %d, dstDomain: %d",
+		glog.Infof("Copy is converted to duplicate, srcId: %s, srcDomain: %d, dstDomain: %d",
 			req.SrcFid, req.SrcDomain, req.DstDomain)
 
 		return &transfer.CopyRep{
@@ -91,7 +91,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 	}
 
 	inf := wf.GetFileInfo()
-	log.Printf("Succeeded to copy file %s to %s", req.SrcFid, inf.Id)
+	glog.Infof("Succeeded to copy file %s to %s", req.SrcFid, inf.Id)
 
 	// space log.
 	slog := &metadata.SpaceLog{
@@ -105,7 +105,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 	}
 	err = s.spaceOp.SaveSpaceLog(slog)
 	if err != nil {
-		log.Printf("%s, error: %v", slog.String(), err)
+		glog.Warningf("%s, error: %v", slog.String(), err)
 	}
 
 	event := &metadata.Event{
@@ -123,7 +123,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 	err = s.eventOp.SaveEvent(event)
 	if err != nil {
 		// log into file instead return.
-		log.Printf("%s, error: %v", event.String(), err)
+		glog.Warningf("%s, error: %v", event.String(), err)
 	}
 
 	return &transfer.CopyRep{

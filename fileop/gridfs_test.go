@@ -1,10 +1,10 @@
 package fileop
 
 import (
-	"log"
 	"testing"
 	"time"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
@@ -20,9 +20,9 @@ func TestServerStatus(t *testing.T) {
 
 	defer session.Close()
 
-	log.Printf("waiting for shutdown server!")
+	glog.Infof("waiting for shutdown server!")
 	time.Sleep(10 * time.Second) // try to shutdown the mongodb server.
-	log.Printf("wait over!")
+	glog.Infof("wait over!")
 
 	if !Ok(session) {
 		t.Error("status is not ok")

@@ -2,10 +2,11 @@ package discovery
 
 import (
 	"encoding/json"
-	"log"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+
+	"github.com/golang/glog"
 
 	"jingoal.com/dfs/notice"
 	"jingoal.com/dfs/proto/discovery"
@@ -46,7 +47,7 @@ type ZKDfsServerRegister struct {
 // If successed, other servers will be notified.
 func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 	if atomic.LoadInt32(&r.registered) == 1 {
-		log.Printf("Server %v has registerd already.", s)
+		glog.Warningf("Server %v has registerd already.", s)
 		return nil
 	}
 
@@ -77,12 +78,12 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 						ob <- struct{}{}
 					}
 				}()
-				log.Printf("Succeeded to fire %d sendFlag.", len(r.observers))
+				glog.Infof("Succeeded to fire online notice %d.", len(r.observers))
 
 			case changedServer := <-data: // Get changed server and update serverMap.
 				server := new(discovery.DfsServer)
 				if err := json.Unmarshal(changedServer, server); err != nil {
-					log.Printf("Failed to unmarshal json, error: %v", err)
+					glog.Warningf("Failed to unmarshal json, error: %v", err)
 					continue
 				}
 				r.putDfsServerToMap(server)
@@ -91,7 +92,7 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 				atomic.CompareAndSwapInt32(&r.registered, 1, 0)
 
 				// Something must be done.
-				log.Printf("Failed to do notice, routine exit. error: %v", err)
+				glog.Warningf("Watcher routine exit. error: %v", err)
 				return
 			}
 		}
@@ -115,7 +116,7 @@ func (r *ZKDfsServerRegister) putDfsServerToMap(server *discovery.DfsServer) {
 	defer r.rwmu.Unlock()
 
 	r.serverMap[server.Id] = server
-	log.Printf("Succeeded to add server %s into server map", server.String())
+	glog.Infof("Succeeded to add server %s into server map", server.String())
 }
 
 // CleanDfsServerMap cleans the map of DfsServer.
@@ -126,7 +127,7 @@ func (r *ZKDfsServerRegister) cleanDfsServerMap() {
 	initialSize := len(r.serverMap)
 	r.serverMap = make(map[string]*discovery.DfsServer, initialSize)
 
-	log.Printf("Succeeded to clean DfsServerMap, %d", initialSize)
+	glog.Infof("Succeeded to clean DfsServerMap, %d", initialSize)
 }
 
 // AddObserver adds an observer for DfsServer node changed.

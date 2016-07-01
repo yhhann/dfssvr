@@ -2,9 +2,9 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"gopkg.in/mgo.v2/bson"
 
@@ -18,7 +18,7 @@ import (
 func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq) (*transfer.RemoveFileRep, error) {
 	serviceName := "RemoveFile"
 	peerAddr := getPeerAddressString(ctx)
-	log.Printf("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	clientDesc := ""
 	if req.GetDesc() != nil {
@@ -67,7 +67,7 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	}
 	if er := s.eventOp.SaveEvent(event); er != nil {
 		// log into file instead return.
-		log.Printf("%s, error: %v", event.String(), er)
+		glog.Warningf("%s, error: %v", event.String(), er)
 	}
 
 	rep := &transfer.RemoveFileRep{}
@@ -78,7 +78,7 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
 	if err != nil {
-		log.Printf("RemoveFile, failed to get handler for read, error: %v", err)
+		glog.Warningf("RemoveFile, failed to get handler for read, error: %v", err)
 		return rep, err
 	}
 
@@ -90,7 +90,7 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 		p = *h
 		result, fm, err = p.Remove(req.Id, req.Domain)
 		if err != nil {
-			log.Printf("RemoveFile, failed to remove file %s %d from %v, %v", req.Id, req.Domain, p.Name(), err)
+			glog.Warningf("RemoveFile, failed to remove file %s %d from %v, %v", req.Id, req.Domain, p.Name(), err)
 		}
 	}
 
@@ -110,7 +110,7 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 			Type:      metadata.DeleteType.String(),
 		}
 		if er := s.spaceOp.SaveSpaceLog(slog); er != nil {
-			log.Printf("%s, error: %v", slog.String(), er)
+			glog.Warningf("%s, error: %v", slog.String(), er)
 		}
 	}
 
@@ -126,15 +126,15 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	}
 	if er := s.eventOp.SaveEvent(resultEvent); er != nil {
 		// log into file instead return.
-		log.Printf("%s, error: %v", event.String(), er)
+		glog.Warningf("%s, error: %v", event.String(), er)
 	}
 
 	// TODO(hanyh): monitor remove.
 
 	if result {
-		log.Printf("RemoveFile, succeeded to remove entity %s from %v.", req.Id, p.Name())
+		glog.Infof("RemoveFile, succeeded to remove entity %s from %v.", req.Id, p.Name())
 	} else {
-		log.Printf("RemoveFile, succeeded to remove reference %s from %v", req.Id, p.Name())
+		glog.Infof("RemoveFile, succeeded to remove reference %s from %v", req.Id, p.Name())
 	}
 
 	rep.Result = result

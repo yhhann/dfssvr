@@ -5,11 +5,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/peer"
 
@@ -74,7 +74,7 @@ func (s *DFSServer) Close() {
 }
 
 func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
-	log.Printf("Start to register self[%s,%s]", name, lsnAddr)
+	glog.Infof("Start to register self[%s,%s]", name, lsnAddr)
 
 	rAddr, err := sanitizeLsnAddr(lsnAddr)
 	if err != nil {
@@ -89,7 +89,7 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 		return err
 	}
 
-	log.Printf("Succeeded to register self[%s,%s] on %s ok", name, rAddr, transfer.NodeName)
+	glog.Infof("Succeeded to register self[%s,%s] on %s ok", name, rAddr, transfer.NodeName)
 	return nil
 }
 
@@ -108,8 +108,8 @@ type DBAddr struct {
 //  lsnAddr, _ := ResolveTCPAddr("tcp", ":10000")
 //  dfsServer, err := NewDFSServer(lsnAddr, "mySite", "shard",
 //         "mongodb://192.168.1.15:27017", "192.168.1.16:2181", 3)
-func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string, zkTimeout int) (server *DFSServer, err error) {
-	log.Printf("Try to start DFS server %v on %v\n", name, lsnAddr.String())
+func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string, zkTimeout uint) (server *DFSServer, err error) {
+	glog.Infof("Try to start DFS server %v on %v\n", name, lsnAddr.String())
 
 	server = new(DFSServer)
 	defer func(s *DFSServer) {
@@ -152,7 +152,7 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string,
 	server.reOp = reop
 
 	server.selector, err = NewHandlerSelector(server)
-	log.Printf("Succeeded to initialize storage servers.")
+	glog.Infof("Succeeded to initialize storage servers.")
 
 	// Register self.
 	regAddr := *RegisterAddr
@@ -168,7 +168,7 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string,
 	server.selector.startShardNoticeRoutine()
 	startRateCheckRoutine()
 
-	log.Printf("Succeeded to start DFS server %v.", name)
+	glog.Infof("Succeeded to start DFS server %v.", name)
 
 	return server, nil
 }

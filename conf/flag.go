@@ -2,8 +2,9 @@ package conf
 
 import (
 	"flag"
-	"log"
 	"strings"
+
+	"github.com/golang/glog"
 )
 
 var (
@@ -58,23 +59,23 @@ func update(name string, value string) {
 
 func updateGeneral(key string, value string) {
 	if privateValue, ok := privateMap[key]; ok {
-		log.Printf("key %s, private %s, general %s", key, privateValue, value)
+		glog.Infof("key %s has private value %s, general %s", key, privateValue, value)
 		return
 	}
-	up(key, value)
+	UpdateFlagValue(key, value)
 }
 
 func updatePrivate(key string, value string) {
-	up(key, value)
 	privateMap[strings.TrimPrefix(key, nodeName)] = value
+	UpdateFlagValue(key, value)
 }
 
-func up(key string, value string) {
+func UpdateFlagValue(key string, value string) {
 	if f, ok := flagMap[key]; ok {
 		f.Value.Set(value)
-		log.Printf("update flag %s to %s", key, value)
+		glog.Infof("update flag %s to %s", key, value)
 		return
 	}
 
-	log.Printf("no parameter %s, value %s", key, value)
+	glog.Infof("no parameter %s need to be update, value %s", key, value)
 }

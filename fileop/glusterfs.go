@@ -5,12 +5,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/kshlm/gogfapi/gfapi"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -82,7 +82,7 @@ func (h *GlusterHandler) Close() error {
 func (h *GlusterHandler) copySessionAndGridFS() (*mgo.Session, *mgo.GridFS) {
 	session, err := metadata.CopySession(h.Uri)
 	if err != nil {
-		log.Printf("Error, session is nil")
+		glog.Error("Error, session is nil")
 	}
 
 	return session, session.DB(h.Shard.Name).GridFS("fs")
@@ -219,7 +219,7 @@ func (h *GlusterHandler) Find(id string) (string, error) {
 		return "", fmt.Errorf("find file error %s", id)
 	}
 
-	log.Printf("Succeeded to find file %s, return %s", id, oid.Hex())
+	glog.Infof("Succeeded to find file %s, return %s", id, oid.Hex())
 
 	return oid.Hex(), nil
 }
@@ -242,7 +242,7 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error
 
 	result, err := h.duplfs.Delete(h.gridfs, id)
 	if err != nil {
-		log.Printf("Failed to remove file %s %d, error: %s", id, domain, err)
+		glog.Warningf("Failed to remove file %s %d, error: %s", id, domain, err)
 		return false, nil, err
 	}
 
@@ -254,7 +254,7 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error
 
 		filePath := util.GetFilePath(h.VolBase, domain, oid.Hex(), h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
-			log.Printf("Failed to remove file %s %d from %s", id, domain, filePath)
+			glog.Warningf("Failed to remove file %s %d from %s", id, domain, filePath)
 		}
 	}
 
@@ -287,18 +287,18 @@ func (h *GlusterHandler) IsHealthy() bool {
 
 	magicDirPath := filepath.Join(h.VolBase, "health", transfer.ServerId)
 	if err := h.Volume.MkdirAll(magicDirPath, 0755); err != nil {
-		log.Printf("IsHealthy error: %v", err)
+		glog.Warningf("IsHealthy error: %v", err)
 		return false
 	}
 
 	fn := strconv.Itoa(int(time.Now().Unix()))
 	magicFilePath := filepath.Join(magicDirPath, fn)
 	if _, err := h.Volume.Create(magicFilePath); err != nil {
-		log.Printf("IsHealthy error: %v", err)
+		glog.Warningf("IsHealthy error: %v", err)
 		return false
 	}
 	if err := h.Volume.Unlink(magicFilePath); err != nil {
-		log.Printf("IsHealthy error: %v", err)
+		glog.Warningf("IsHealthy error: %v", err)
 		return false
 	}
 

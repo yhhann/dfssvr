@@ -2,8 +2,8 @@ package server
 
 import (
 	"fmt"
-	"log"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
 	"jingoal.com/dfs/proto/transfer"
@@ -13,7 +13,7 @@ import (
 func (s *DFSServer) Stat(ctx context.Context, req *transfer.GetFileReq) (*transfer.PutFileRep, error) {
 	serviceName := "Stat"
 	peerAddr := getPeerAddressString(ctx)
-	log.Printf("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Id) == 0 || req.Domain <= 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)

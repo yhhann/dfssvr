@@ -2,9 +2,9 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
 	"jingoal.com/dfs/metadata"
@@ -16,7 +16,7 @@ import (
 func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (*transfer.DuplicateRep, error) {
 	serviceName := "Duplicate"
 	peerAddr := getPeerAddressString(ctx)
-	log.Printf("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Id) == 0 || req.Domain <= 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)
@@ -60,7 +60,7 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 		}
 		if er := s.eventOp.SaveEvent(event); er != nil {
 			// log into file instead return.
-			log.Printf("%s, error: %v", event.String(), er)
+			glog.Warningf("%s, error: %v", event.String(), er)
 		}
 
 		return nil, err
@@ -76,7 +76,7 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 	}
 	if er := s.eventOp.SaveEvent(event); er != nil {
 		// log into file instead return.
-		log.Printf("%s, error: %v", event.String(), er)
+		glog.Warningf("%s, error: %v", event.String(), er)
 	}
 
 	return &transfer.DuplicateRep{

@@ -1,8 +1,9 @@
 package fileop
 
 import (
-	"log"
 	"time"
+
+	"github.com/golang/glog"
 
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/recovery"
@@ -34,7 +35,7 @@ func (h *DegradeHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 
 	err = h.reOp.SaveEvent(&re)
 	if err != nil { // Log and ignore the event saving error.
-		log.Printf("DEGRADE log error, log[%s], error[%v]", re.String(), err)
+		glog.Warningf("DEGRADE log error, log[%s], error[%v]", re.String(), err)
 	}
 	return f, nil
 }

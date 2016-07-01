@@ -3,13 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	"google.golang.org/grpc"
 
 	"jingoal.com/dfs/instrument"
@@ -21,19 +19,19 @@ import (
 var (
 	serverId = flag.String("server-name", "test-dfs-svr", "unique name")
 
-	lsnAddr     = flag.String("listen-addr", ":10000", "listen address")
-	zkAddr      = flag.String("zk-addr", "127.0.0.1:2181", "zookeeper address")
-	timeout     = flag.Int("zk-timeout", 15000, "zookeeper timeout")
-	shardDbName = flag.String("shard-name", "shard", "shard database name")
-	shardDbUri  = flag.String("shard-dburi", "mongodb://127.0.0.1:27017", "shard database uri")
-	eventDbName = flag.String("event-dbname", "dfsevent", "event database name")
-	eventDbUri  = flag.String("event-dburi", "", "event database uri")
-	slogDbName  = flag.String("slog-dbname", "dfsslog", "slog database name")
-	slogDbUri   = flag.String("slog-dburi", "", "slog database uri")
-	logDir      = flag.String("log-dir", "/var/log/dfs", "The log directory.")
-	compress    = flag.Bool("compress", false, "compressing transfer file")
-	concurrency = flag.Uint("concurrency", 0, "Concurrency")
-	version     = flag.Bool("version", false, "print version")
+	lsnAddr          = flag.String("listen-addr", ":10000", "listen address")
+	zkAddr           = flag.String("zk-addr", "127.0.0.1:2181", "zookeeper address")
+	timeout          = flag.Uint("zk-timeout", 15000, "zookeeper timeout")
+	shardDbName      = flag.String("shard-name", "shard", "shard database name")
+	shardDbUri       = flag.String("shard-dburi", "mongodb://127.0.0.1:27017", "shard database uri")
+	eventDbName      = flag.String("event-dbname", "dfsevent", "event database name")
+	eventDbUri       = flag.String("event-dburi", "", "event database uri")
+	slogDbName       = flag.String("slog-dbname", "dfsslog", "slog database name")
+	slogDbUri        = flag.String("slog-dburi", "", "slog database uri")
+	logFlushInterval = flag.Uint("log-flush-interval", 10, "interval of glog print in second.")
+	compress         = flag.Bool("compress", false, "compressing transfer file")
+	concurrency      = flag.Uint("concurrency", 0, "Concurrency")
+	version          = flag.Bool("version", false, "print version")
 
 	VERSION   = "2.0"
 	buildTime = ""
@@ -46,24 +44,19 @@ func checkFlags() {
 	}
 
 	if *serverId == "" {
-		log.Println("Error: flag --server-name is required.")
-		os.Exit(1)
+		glog.Exit("Error: flag --server-name is required.")
 	}
 	if *lsnAddr == "" {
-		log.Println("Flag --server-addr is required.")
-		os.Exit(2)
+		glog.Exit("Flag --server-addr is required.")
 	}
 	if *zkAddr == "" {
-		log.Println("Flag --zk-addr is required.")
-		os.Exit(3)
+		glog.Exit("Flag --zk-addr is required.")
 	}
 	if *shardDbName == "" {
-		log.Println("Flag --shard-name is required.")
-		os.Exit(4)
+		glog.Exit("Flag --shard-name is required.")
 	}
 	if *shardDbUri == "" {
-		log.Println("Flag --shard-dburi is required.")
-		os.Exit(5)
+		glog.Exit("Flag --shard-dburi is required.")
 	}
 	if *slogDbName == "" {
 		slogDbName = shardDbName
@@ -82,45 +75,21 @@ func checkFlags() {
 	}
 }
 
-func setupLog() {
-	if *logDir == "" {
-		return
-	}
-
-	logD := *logDir
-	ports := strings.Split(*lsnAddr, ":")
-	if len(ports) > 1 {
-		logD = filepath.Join(*logDir, ports[1])
-	}
-
-	if _, err := os.Stat(logD); os.IsNotExist(err) {
-		if err = os.MkdirAll(logD, 0700); err != nil {
-			log.Fatalf("Failed to create log directory: %v", err)
-		}
-	}
-
-	f, err := os.OpenFile(filepath.Join(logD, "dfs-server.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("Error opening log file: %v", err)
-	}
-
-	log.SetOutput(f)
-}
-
 // This is a DFSServer instance.
 func main() {
 	flag.Parse()
 	checkFlags()
 
-	setupLog()
+	go flushLogDaemon()
+	defer glog.Flush()
 
 	instrument.StartMetrics()
 
 	lis, err := net.Listen("tcp", *lsnAddr)
 	if err != nil {
-		log.Fatalf("failed to listen %v", err)
+		glog.Exitf("failed to listen %v", err)
 	}
-	log.Printf("DFSServer listened on %s", lis.Addr().String())
+	glog.Infof("DFSServer listened on %s", lis.Addr().String())
 
 	dbAddr := &server.DBAddr{
 		ShardDbName: *shardDbName,
@@ -136,7 +105,7 @@ func main() {
 		transfer.ServerId = *serverId
 		dfsServer, err = server.NewDFSServer(lis.Addr(), *serverId, dbAddr, *zkAddr, *timeout)
 		if err != nil {
-			log.Printf("Failed to create DFS Server: %v, try again.", err)
+			glog.Warningf("Failed to create DFS Server: %v, try again.", err)
 			time.Sleep(time.Duration(*server.HealthCheckInterval) * time.Second)
 			continue
 		}
@@ -159,5 +128,12 @@ func main() {
 	transfer.RegisterFileTransferServer(grpcServer, dfsServer)
 	discovery.RegisterDiscoveryServiceServer(grpcServer, dfsServer)
 
+	glog.Flush()
 	grpcServer.Serve(lis)
+}
+
+func flushLogDaemon() {
+	for _ = range time.Tick(time.Duration(*logFlushInterval) * time.Second) {
+		glog.Flush()
+	}
 }

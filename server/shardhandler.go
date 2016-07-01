@@ -3,9 +3,10 @@ package server
 import (
 	"fmt"
 	"io"
-	"log"
 	"sync/atomic"
 	"time"
+
+	"github.com/golang/glog"
 
 	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/instrument"
@@ -70,14 +71,14 @@ func (sh *ShardHandler) updateStatus(newStatus handlerStatus) {
 func (sh *ShardHandler) startRecoveryRoutine() {
 	if atomic.CompareAndSwapInt32(&sh.recoveryRunning, 0 /*old value*/, 1 /*new value*/) {
 		go sh.Recovery()
-		log.Printf("Succeeded to start recovery routine for %s", sh.handler.Name())
+		glog.Infof("Succeeded to start recovery routine for %s", sh.handler.Name())
 	}
 }
 
 func (sh *ShardHandler) stopRecoveryRoutine() {
 	if atomic.CompareAndSwapInt32(&sh.recoveryRunning, 1 /* old value*/, 0 /* new value*/) {
 		close(sh.recoveryChan)
-		log.Printf("Succeeded to stop recovery routine for %s", sh.handler.Name())
+		glog.Infof("Succeeded to stop recovery routine for %s", sh.handler.Name())
 	}
 }
 
@@ -110,17 +111,17 @@ func (sh *ShardHandler) startHealthyCheckRoutine() {
 					go func() {
 						status := healthCheck(fh)
 						sh.hs.updateHandlerStatus(fh, status)
-						log.Printf("Health check, handler %v is %s", fh.Name(), status.String())
+						glog.Infof("Health check, handler %v is %s", fh.Name(), status.String())
 					}()
 				}
 			case <-sh.healthyCheckRoutineRunning: // stop signal
-				log.Printf("Succeeded to stop healty check routine for %v", sh.handler.Name())
+				glog.Infof("Succeeded to stop healty check routine for %v", sh.handler.Name())
 				return
 			}
 		}
 	}()
 
-	log.Printf("Succeeded to start healthy check routine for %v, time interval %d seconds.",
+	glog.Infof("Succeeded to start healthy check routine for %v, time interval %d seconds.",
 		sh.handler.Name(), *HealthCheckInterval)
 }
 
@@ -136,19 +137,19 @@ Stop:
 
 			// TODO(hanyh): copy duplilcation metadata.
 			if err := copyFile(sh.handler, sh.hs.degradeShardHandler.handler, recoveryInfo); err != nil {
-				log.Printf("Failed to recovery file %s, error: %v", recoveryInfo.Fid, err)
+				glog.Warningf("Failed to recovery file %s, error: %v", recoveryInfo.Fid, err)
 				break
 			}
 
 			if err := sh.hs.dfsServer.reOp.RemoveEvent(recoveryInfo.Id); err != nil {
-				log.Printf("Failed to remove recovery event %s", recoveryInfo.String())
+				glog.Warningf("Failed to remove recovery event %s", recoveryInfo.String())
 			}
 
-			log.Printf("Succeeded to recovery file %s", recoveryInfo.Fid)
+			glog.Infof("Succeeded to recovery file %s", recoveryInfo.Fid)
 		}
 	}
 
-	log.Printf("Succeeded to stop recovery routine for %vis ", sh.handler.Name())
+	glog.Infof("Succeeded to stop recovery routine for %v.", sh.handler.Name())
 }
 
 func NewShardHandler(handler fileop.DFSFileHandler, status handlerStatus, selector *HandlerSelector) *ShardHandler {

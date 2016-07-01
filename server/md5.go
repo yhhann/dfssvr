@@ -2,8 +2,8 @@ package server
 
 import (
 	"fmt"
-	"log"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
 	"jingoal.com/dfs/fileop"
@@ -16,7 +16,7 @@ import (
 func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.GetByMd5Rep, error) {
 	serviceName := "GetByMd5"
 	peerAddr := getPeerAddressString(ctx)
-	log.Printf("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Md5) == 0 || req.Domain <= 0 || req.Size < 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)
@@ -48,7 +48,7 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 
 	p, oid, err := s.findByMd5(req.Md5, req.Domain, req.Size)
 	if err != nil {
-		log.Printf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
+		glog.Warningf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
 		return nil, err
 	}
 
@@ -63,7 +63,7 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 		}
 		if er := s.eventOp.SaveEvent(event); er != nil {
 			// log into file instead return.
-			log.Printf("%s, error: %v", event.String(), er)
+			glog.Warningf("%s, error: %v", event.String(), er)
 		}
 
 		return nil, err
@@ -78,10 +78,10 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 	}
 	if er := s.eventOp.SaveEvent(event); er != nil {
 		// log into file instead return.
-		log.Printf("%s, error: %v", event.String(), er)
+		glog.Warningf("%s, error: %v", event.String(), er)
 	}
 
-	log.Printf("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
+	glog.Infof("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
 		oid, req.Md5, req.Domain, req.Size)
 
 	return &transfer.GetByMd5Rep{
@@ -93,7 +93,7 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.ExistRep, error) {
 	serviceName := "ExistByMd5"
 	peerAddr := getPeerAddressString(ctx)
-	log.Printf("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Md5) == 0 || req.Domain <= 0 || req.Size < 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)
@@ -121,7 +121,7 @@ func (s *DFSServer) existByMd5Biz(c interface{}, r interface{}, args []interface
 
 	_, _, err := s.findByMd5(req.Md5, req.Domain, req.Size)
 	if err != nil {
-		log.Printf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
+		glog.Warningf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
 		return nil, err
 	}
 
@@ -134,7 +134,7 @@ func (s *DFSServer) findByMd5(md5 string, domain int64, size int64) (fileop.DFSF
 	var err error
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
 	if err != nil {
-		log.Printf("Failed to get handler for read, error: %v", err)
+		glog.Warningf("Failed to get handler for read, error: %v", err)
 		return nil, "", err
 	}
 

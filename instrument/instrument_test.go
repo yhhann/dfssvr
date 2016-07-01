@@ -1,10 +1,11 @@
 package instrument
 
 import (
-	"log"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 func Test(t *testing.T) {
@@ -35,8 +36,8 @@ func Test(t *testing.T) {
 
 		q, err := GetTransferRateQuantile("GetFile", 0.99)
 		if err != nil {
-			log.Printf("error %v", err)
+			glog.Infof("error %v", err)
 		}
-		log.Printf("0.99: %v", q)
+		glog.Infof("0.99: %v", q)
 	}
 }
