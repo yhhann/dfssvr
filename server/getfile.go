@@ -60,16 +60,18 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 	defer file.Close()
 
 	// check timeout, for test.
-	if dl, ok := getDeadline(stream); ok && *enablePreJudge {
-		given := dl.Sub(startTime)
-		expected, err := checkTimeout(file.GetFileInfo().Size, rRate, given)
-		if err != nil {
-			instrument.PrejudgeExceed <- &instrument.Measurements{
-				Name:  serviceName,
-				Value: float64(expected.Nanoseconds()),
+	if *enablePreJudge {
+		if dl, ok := getDeadline(stream); ok {
+			given := dl.Sub(startTime)
+			expected, err := checkTimeout(file.GetFileInfo().Size, rRate, given)
+			if err != nil {
+				instrument.PrejudgeExceed <- &instrument.Measurements{
+					Name:  serviceName,
+					Value: float64(expected.Nanoseconds()),
+				}
+				glog.Warningf("%s, timeout return early, expected %v, given %v", serviceName, expected, given)
+				return err
 			}
-			glog.Warningf("%s, timeout return early, expected %v, given %v", serviceName, expected, given)
-			return err
 		}
 	}
 
