@@ -30,6 +30,7 @@ const (
 var (
 	logDir            = flag.String("gluster-log-dir", "/var/log/dfs", "gluster log file dir")
 	heartbeatInterval = flag.Int("hb-interval", 5, "time interval in seconds of heart beat")
+	enablePreJudge    = flag.Bool("enable-prejudge", false, "enable timeout pre-judge.")
 
 	RegisterAddr    = flag.String("register-addr", "", "register address")
 	DefaultDuration = flag.Int("default-duration", 5, "default transfer duration in seconds.")

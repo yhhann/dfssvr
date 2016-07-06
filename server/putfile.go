@@ -158,7 +158,7 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 
 func (s *DFSServer) createFile(reqInfo *transfer.FileInfo, stream transfer.FileTransfer_PutFileServer, startTime time.Time) (fileop.DFSFile, *fileop.DFSFileHandler, error) {
 	// check timeout, for test.
-	if dl, ok := getDeadline(stream); ok {
+	if dl, ok := getDeadline(stream); ok && *enablePreJudge {
 		given := dl.Sub(startTime)
 		expected, err := checkTimeout(reqInfo.Size, wRate, given)
 		if err != nil {

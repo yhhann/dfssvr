@@ -60,7 +60,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 	defer file.Close()
 
 	// check timeout, for test.
-	if dl, ok := getDeadline(stream); ok {
+	if dl, ok := getDeadline(stream); ok && *enablePreJudge {
 		given := dl.Sub(startTime)
 		expected, err := checkTimeout(file.GetFileInfo().Size, rRate, given)
 		if err != nil {
