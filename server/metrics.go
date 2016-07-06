@@ -56,12 +56,12 @@ func startRateCheckRoutine() {
 		for {
 			select {
 			case <-ticker.C:
-				r, err := instrument.GetTransferRateQuantile("GetFile", 0.99)
+				r, err := instrument.GetTransferRate("GetFile")
 				if err == nil && r > 0 { // err != nil ignored
 					rRate = r
 				}
 
-				w, err := instrument.GetTransferRateQuantile("PutFile", 0.99)
+				w, err := instrument.GetTransferRate("PutFile")
 				if err == nil && w > 0 { // err != nil ignored
 					wRate = w
 				}

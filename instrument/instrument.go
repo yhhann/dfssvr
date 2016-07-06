@@ -2,7 +2,6 @@ package instrument
 
 import (
 	"flag"
-	"fmt"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,20 +24,21 @@ var (
 		prometheus.GaugeOpts{
 			Namespace: "dfs2_0",
 			Subsystem: "server",
-			Name:      "in_process_counter",
+			Name:      "in_process",
 			Help:      "Method in process.",
 		},
 		[]string{"service"},
 	)
 	InProcess = make(chan *Measurements, *metricsBufSize)
 
-	// sucDuration instruments duration of method called successfully.
-	sucDuration = prometheus.NewSummaryVec(
-		prometheus.SummaryOpts{
+	// sucLatency instruments duration of method called successfully.
+	sucLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
 			Namespace: "dfs2_0",
 			Subsystem: "server",
-			Name:      "suc_durations_nanoseconds",
-			Help:      "Successful RPC latency distributions.",
+			Name:      "suc_latency",
+			Help:      "Successful RPC latency in millisecond.",
+			Buckets:   prometheus.ExponentialBuckets(0.1, 10, 6),
 		},
 		[]string{"service"},
 	)
@@ -61,21 +61,21 @@ var (
 		prometheus.HistogramOpts{
 			Namespace: "dfs2_0",
 			Subsystem: "server",
-			Name:      "timeout_nanoseconds",
-			Help:      "timeout distributions.",
-			Buckets:   prometheus.ExponentialBuckets(100000, 10, 6),
+			Name:      "timeout",
+			Help:      "timeout in millisecond.",
+			Buckets:   prometheus.ExponentialBuckets(0.1, 10, 6),
 		},
 		[]string{"service"},
 	)
 	TimeoutHistogram = make(chan *Measurements, *metricsBufSize)
 
 	// transferRate instruments rate of file transfer.
-	transferRate = prometheus.NewSummaryVec(
-		prometheus.SummaryOpts{
+	transferRate = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
 			Namespace: "dfs2_0",
 			Subsystem: "server",
-			Name:      "rate_in_kbit_per_sec",
-			Help:      "transfer rate distributions.",
+			Name:      "transfer_rate",
+			Help:      "transfer rate in kbit/sec.",
 		},
 		[]string{"service"},
 	)
@@ -168,7 +168,7 @@ var (
 
 func init() {
 	prometheus.MustRegister(inProcessGauge)
-	prometheus.MustRegister(sucDuration)
+	prometheus.MustRegister(sucLatency)
 	prometheus.MustRegister(failCounter)
 	prometheus.MustRegister(timeoutHistogram)
 	prometheus.MustRegister(transferRate)
@@ -193,13 +193,15 @@ func StartMetrics() {
 				case m := <-NoDeadlineCounter:
 					noDeadlineCounter.WithLabelValues(m.Name).Inc()
 				case m := <-TimeoutHistogram:
-					timeoutHistogram.WithLabelValues(m.Name).Observe(m.Value)
+					// in millisecond
+					timeoutHistogram.WithLabelValues(m.Name).Observe(m.Value / 1e6)
 				case m := <-TransferRate:
-					transferRate.WithLabelValues(m.Name).Observe(m.Value)
+					transferRate.WithLabelValues(m.Name).Set(m.Value)
 				case m := <-FileSize:
 					fileSize.WithLabelValues(m.Name).Observe(m.Value)
 				case m := <-SuccessDuration:
-					sucDuration.WithLabelValues(m.Name).Observe(m.Value)
+					// in millisecond
+					sucLatency.WithLabelValues(m.Name).Observe(m.Value / 1e6)
 				case m := <-StorageStatus:
 					storageStatusGauge.WithLabelValues(m.Name).Set(m.Value)
 				case m := <-IncCreated:
@@ -225,7 +227,7 @@ func StartMetrics() {
 	}()
 }
 
-func GetTransferRateQuantile(method string, quantile float64) (float64, error) {
+func GetTransferRate(method string) (float64, error) {
 	sum, err := transferRate.GetMetricWith(prometheus.Labels{"service": method})
 	if err != nil {
 		return 0, err
@@ -236,12 +238,5 @@ func GetTransferRateQuantile(method string, quantile float64) (float64, error) {
 		return 0, err
 	}
 
-	qs := m.GetSummary().GetQuantile()
-	for _, q := range qs {
-		if q.GetQuantile() == quantile {
-			return q.GetValue(), nil
-		}
-	}
-
-	return 0, fmt.Errorf("Not Found")
+	return m.GetGauge().GetValue(), nil
 }

@@ -34,7 +34,7 @@ func Test(t *testing.T) {
 
 		time.Sleep(time.Duration(100) * time.Millisecond)
 
-		q, err := GetTransferRateQuantile("GetFile", 0.99)
+		q, err := GetTransferRate("GetFile")
 		if err != nil {
 			glog.Infof("error %v", err)
 		}
