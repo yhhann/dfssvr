@@ -2,6 +2,7 @@ package conf
 
 import (
 	"flag"
+	"fmt"
 	"strings"
 
 	"github.com/golang/glog"
@@ -70,6 +71,7 @@ func updatePrivate(key string, value string) {
 	UpdateFlagValue(key, value)
 }
 
+// UpdateFlagValue updates the value of the flag.
 func UpdateFlagValue(key string, value string) {
 	if f, ok := flagMap[key]; ok {
 		f.Value.Set(value)
@@ -77,5 +79,18 @@ func UpdateFlagValue(key string, value string) {
 		return
 	}
 
-	glog.Infof("no parameter %s need to be update, value %s", key, value)
+	glog.Infof("Failed to update %s to value %, invalid parameter name.", key, value)
+}
+
+// GetAllFlags returns a string which describes all flags and their values.
+func GetAllFlags() string {
+	result := make([]string, 0, 100)
+	count := 0
+	flag.VisitAll(func(f *flag.Flag) {
+		flagValue := fmt.Sprintf("%s: %s", f.Name, f.Value.String())
+		result = append(result, flagValue)
+		count++
+	})
+
+	return strings.Join(result[0:count], "\n")
 }
