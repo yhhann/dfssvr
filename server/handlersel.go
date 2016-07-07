@@ -468,15 +468,15 @@ func findPerfectSegment(segments []*metadata.Segment, domain int64) (int, *metad
 // healthCheck detects a handler for its health.
 // If detection times out, return false.
 func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
-	running := make(chan bool)
+	running := make(chan bool, 1)
 	ticker := time.NewTicker(time.Duration(*HealthCheckTimeout) * time.Second)
 	defer func() {
 		ticker.Stop()
-		close(running)
 	}()
 
 	go func() {
 		running <- handler.IsHealthy()
+		close(running)
 	}()
 
 	select {
