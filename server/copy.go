@@ -87,6 +87,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 
 	length, err := io.Copy(wf, rf)
 	if err != nil {
+		glog.Warningf("Failed to copy file %s, %v", req.SrcFid, err)
 		return nil, err
 	}
 

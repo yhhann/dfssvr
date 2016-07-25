@@ -19,7 +19,7 @@ import (
 var (
 	HealthCheckInterval = flag.Int("health-check-interval", 30, "health check interval in seconds.")
 	HealthCheckTimeout  = flag.Int("health-check-timeout", 5, "health check timeout in seconds.")
-	HealthCheckManually = flag.Bool("health-check-manually", false, "true for checking health manually.")
+	HealthCheckManually = flag.Bool("health-check-manually", true, "true for checking health manually.")
 
 	recoveryBufferSize = flag.Int("recovery-buffer-size", 100000, "size of channel for each DFSFileHandler.")
 	recoveryInterval   = flag.Int("recovery-interval", 60, "interval in seconds for recovery event inspection.")
