@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
 
 	"jingoal.com/dfs/instrument"
@@ -155,14 +156,17 @@ func newSessionManager() *sessionManager {
 
 // openMongoSession returns a session by given mongodb uri.
 func openMongoSession(uri string) (*mgo.Session, error) {
-	info, err := mgo.ParseURL(uri)
+	info, err := ParseURL(uri)
 	if err != nil {
 		return nil, err
 	}
 
-	info.Timeout = time.Duration(*MongoTimeout) * time.Second
+	if info.Timeout == 0 {
+		info.Timeout = time.Duration(*MongoTimeout) * time.Second
+	}
+
 	info.FailFast = true
-	session, err := mgo.DialWithInfo(info)
+	session, err := mgo.DialWithInfo(&info.DialInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +177,13 @@ func openMongoSession(uri string) (*mgo.Session, error) {
 		session.SetSafe(&mgo.Safe{FSync: true})
 	}
 
-	session.SetMode(mgo.Eventual, true)
+	// for compatible with dfs 1.x.
+	if info.SlaveOk {
+		session.SetMode(mgo.Eventual, true)
+	} else {
+		session.SetMode(mgo.Strong, true)
+	}
 
+	glog.Infof("Succeeded to open session %s %s", uri, info.String())
 	return session, nil
 }

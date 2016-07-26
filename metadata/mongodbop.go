@@ -14,7 +14,7 @@ const (
 )
 
 var (
-	MongoTimeout = flag.Int("mongo-timeout", 10, "mongdb connecte timeout")
+	MongoTimeout = flag.Int("mongo-timeout", 100, "mongdb connection timeout")
 
 	ObjectIdInvalidError = errors.New("ObjectId invalid")
 )
