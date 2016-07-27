@@ -152,7 +152,7 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 		glog.Warningf("%s, error: %v", slog.String(), er)
 	}
 
-	instrumentPutFile(inf.Size, rate, serviceName)
+	instrumentPutFile(inf.Size, rate, serviceName, inf.Biz)
 	return
 }
 

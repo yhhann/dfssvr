@@ -25,9 +25,10 @@ func exit(serviceName string) {
 	}
 }
 
-func instrumentPutFile(size int64, rate int64, serviceName string) {
+func instrumentPutFile(size int64, rate int64, serviceName string, biz string) {
 	instrument.FileSize <- &instrument.Measurements{
 		Name:  serviceName,
+		Biz:   biz,
 		Value: float64(size),
 	}
 	instrument.TransferRate <- &instrument.Measurements{
@@ -36,9 +37,10 @@ func instrumentPutFile(size int64, rate int64, serviceName string) {
 	}
 }
 
-func instrumentGetFile(fileSize int64, rate int64, serviceName string) {
+func instrumentGetFile(fileSize int64, rate int64, serviceName string, biz string) {
 	instrument.FileSize <- &instrument.Measurements{
 		Name:  serviceName,
+		Biz:   biz,
 		Value: float64(fileSize),
 	}
 	instrument.TransferRate <- &instrument.Measurements{

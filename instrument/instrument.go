@@ -10,6 +10,7 @@ import (
 
 type Measurements struct {
 	Name  string
+	Biz   string
 	Value float64
 }
 
@@ -90,7 +91,7 @@ var (
 			Help:      "file size distributions.",
 			Buckets:   prometheus.ExponentialBuckets(100*1024, 2, 6),
 		},
-		[]string{"service"},
+		[]string{"service", "biz"},
 	)
 	FileSize = make(chan *Measurements, *metricsBufSize)
 
@@ -198,7 +199,7 @@ func StartMetrics() {
 				case m := <-TransferRate:
 					transferRate.WithLabelValues(m.Name).Set(m.Value)
 				case m := <-FileSize:
-					fileSize.WithLabelValues(m.Name).Observe(m.Value)
+					fileSize.WithLabelValues(m.Name, m.Biz).Observe(m.Value)
 				case m := <-SuccessDuration:
 					// in millisecond
 					sucLatency.WithLabelValues(m.Name).Observe(m.Value / 1e6)

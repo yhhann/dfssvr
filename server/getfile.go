@@ -94,7 +94,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			nsecs := time.Since(startTime).Nanoseconds()
 			rate := off * 8 * 1e6 / nsecs // in kbit/s
 
-			instrumentGetFile(off, rate, serviceName)
+			instrumentGetFile(off, rate, serviceName, file.GetFileInfo().Biz)
 			glog.Infof("GetFile ok, %s, length %d, elapse %d, rate %d kbit/s", req, off, nsecs, rate)
 
 			return nil
