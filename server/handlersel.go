@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
 	"jingoal.com/dfs/fileop"
@@ -121,6 +122,8 @@ func (hs *HandlerSelector) deleteHandler(handlerName string) {
 		sh.Shutdown()
 		hs.delShardHandler(handlerName)
 	}
+
+	glog.Infof("Succeeded to delete handler, shard: %s", handlerName)
 }
 
 func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
@@ -154,6 +157,7 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 		if err := sh.Shutdown(); err != nil {
 			glog.Warningf("Failed to shutdown old handler: %v", sh.handler.Name())
 		}
+		glog.Infof("Succeded to shutdown old handler, shard: %s", shard.Name)
 	}
 
 	sh := NewShardHandler(handler, statusOk, hs)
@@ -276,12 +280,18 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 				serverName := string(v)
 				shard, err := s.mOp.LookupShardByName(serverName)
 				if err != nil {
+					if err == mgo.ErrNotFound {
+						shard := &metadata.Shard{
+							Name: serverName,
+						}
+						hs.updateHandler(shard, 2 /* delete handler */)
+						break
+					}
 					glog.Warningf("Failed to lookup shard %s, error: %v", serverName, err)
 					break
 				}
 
-				// TODO(hanyh): refine it.
-				hs.updateHandler(shard, 1)
+				hs.updateHandler(shard, 1 /* add handler */)
 			case err := <-errs:
 				glog.Warningf("Failed to process shard notice, error: %v", err)
 			}
@@ -429,6 +439,8 @@ func updateSegment(segments []*metadata.Segment, segment *metadata.Segment) []*m
 		rear := append([]*metadata.Segment{}, segments[pos:]...)
 		segments = append(segments[:pos], segment)
 		segments = append(segments, rear...)
+
+		glog.Infof("Succeeded to insert segment [d:%d,n:%s,m:%s] at pos %d.", segment.Domain, segment.NormalServer, segment.MigrateServer, pos)
 		return segments
 	}
 
@@ -438,11 +450,13 @@ func updateSegment(segments []*metadata.Segment, segment *metadata.Segment) []*m
 		result.MigrateServer == segment.MigrateServer {
 		segs := append(segments[:pos], segments[pos+1:]...)
 		segments = segs
+		glog.Infof("Succeeded to remove segment [d:%d,n:%s,m:%s] at pos %d.", segment.Domain, segment.NormalServer, segment.MigrateServer, pos)
 		return segments
 	}
 
 	// Not equal, update it.
 	segments[pos] = segment
+	glog.Infof("Succeeded to update segment [d:%d,n:%s,m:%s] at pos %d.", segment.Domain, segment.NormalServer, segment.MigrateServer, pos)
 	return segments
 }
 
