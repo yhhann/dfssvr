@@ -55,6 +55,12 @@ func ParseURL(url string) (*DialInfo, error) {
 			if err != nil {
 				return nil, errors.New("bad value for maxPoolSize: " + v)
 			}
+		case "connecttimeoutms": // compatible with java.
+			timeout, err = strconv.Atoi(v)
+			timeout /= 1000
+			if err != nil {
+				return nil, errors.New("bad value for connecttimeoutms: " + v)
+			}
 		case "timeout": // add for dfs2.0.
 			timeout, err = strconv.Atoi(v)
 			if err != nil {
