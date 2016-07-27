@@ -91,12 +91,20 @@ func (h *GridFsHandler) Open(id string, domain int64) (dfsFile DFSFile, err erro
 		return
 	}
 
+	gridMeta := struct {
+		Bizname string
+	}{}
+	if err = gridFile.GetMeta(&gridMeta); err != nil {
+		return
+	}
+
 	inf := &transfer.FileInfo{
 		Id:     id,
 		Domain: domain,
 		Name:   gridFile.Name(),
 		Size:   gridFile.Size(),
 		Md5:    gridFile.MD5(),
+		Biz:    gridMeta.Bizname,
 	}
 
 	dfsFile = &GridFsFile{
@@ -244,6 +252,10 @@ func (f *GridFsFile) Close() error {
 		}
 	}()
 
+	if f.mode == FileModeWrite {
+		f.SetMeta(bson.M{"bizname": f.info.Biz})
+	}
+
 	if err := f.GridFile.Close(); err != nil {
 		return err
 	}
@@ -255,6 +267,17 @@ func (f *GridFsFile) Close() error {
 }
 
 func (f GridFsFile) updateGridMetadata() error {
+	return f.gridfs.Files.Update(
+		bson.M{
+			"_id": bson.ObjectIdHex(f.info.Id),
+		},
+		bson.M{
+			"$set": f.additionalMetadata(),
+		},
+	)
+}
+
+func (f GridFsFile) additionalMetadata() bson.D {
 	var opdata bson.D
 
 	opdata = append(opdata, bson.DocElem{
@@ -273,12 +296,5 @@ func (f GridFsFile) updateGridMetadata() error {
 		"aliases", nil, // For compatible with dfs 1.0
 	})
 
-	return f.gridfs.Files.Update(
-		bson.M{
-			"_id": bson.ObjectIdHex(f.info.Id),
-		},
-		bson.M{
-			"$set": opdata,
-		},
-	)
+	return opdata
 }

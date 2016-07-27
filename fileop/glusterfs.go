@@ -168,6 +168,13 @@ func (h *GlusterHandler) Open(id string, domain int64) (f DFSFile, err error) {
 		return
 	}
 
+	gridMeta := struct {
+		Bizname string
+	}{}
+	if err = gridFile.GetMeta(&gridMeta); err != nil {
+		return
+	}
+
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
 		err = fmt.Errorf("assertion error %T %v", gridFile.Id(), gridFile.Id())
@@ -190,6 +197,7 @@ func (h *GlusterHandler) Open(id string, domain int64) (f DFSFile, err error) {
 		Name:   gridFile.Name(),
 		Size:   gridFile.Size(),
 		Md5:    gridFile.MD5(),
+		Biz:    gridMeta.Bizname,
 	}
 	f = result
 
@@ -406,6 +414,10 @@ func (f GlusterFile) Close() error {
 		return err
 	}
 
+	if f.mode == FileModeWrite {
+		f.grf.SetMeta(bson.M{"bizname": f.info.Biz})
+	}
+
 	if err := f.grf.Close(); err != nil {
 		return err
 	}
@@ -418,6 +430,17 @@ func (f GlusterFile) Close() error {
 }
 
 func (f GlusterFile) updateMetadata() error {
+	return f.gridfs.Files.Update(
+		bson.M{
+			"_id": f.grf.Id(),
+		},
+		bson.M{
+			"$set": f.additionalMetadata(),
+		},
+	)
+}
+
+func (f GlusterFile) additionalMetadata() bson.D {
 	var opdata bson.D
 
 	opdata = append(opdata, bson.DocElem{
@@ -442,12 +465,5 @@ func (f GlusterFile) updateMetadata() error {
 		"md5", hex.EncodeToString(f.md5.Sum(nil)),
 	})
 
-	return f.gridfs.Files.Update(
-		bson.M{
-			"_id": f.grf.Id(),
-		},
-		bson.M{
-			"$set": opdata,
-		},
-	)
+	return opdata
 }
