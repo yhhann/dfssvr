@@ -22,6 +22,7 @@ go_library(
     "//third-party-go/vendor/google.golang.org/grpc/codes:go_default_library",
     "//third-party-go/vendor/google.golang.org/grpc/peer:go_default_library",
     "//third-party-go/vendor/google.golang.org/grpc/transport:go_default_library",
+    "//third-party-go/vendor/gopkg.in/mgo.v2:go_default_library",
     "//third-party-go/vendor/gopkg.in/mgo.v2/bson:go_default_library",
   ],
 )
