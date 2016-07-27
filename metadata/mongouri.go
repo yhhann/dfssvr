@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
 )
 
@@ -80,7 +81,7 @@ func ParseURL(url string) (*DialInfo, error) {
 			}
 			fallthrough
 		default:
-			return nil, errors.New("unsupported connection URL option: " + k + "=" + v)
+			glog.Warningf("unsupported connection URL option: %s=%s", k, v)
 		}
 	}
 	info := DialInfo{
