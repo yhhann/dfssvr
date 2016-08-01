@@ -74,11 +74,12 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 		return nil, err
 	}
 
-	wf, err := (*handler).Create(&transfer.FileInfo{
-		Domain: req.DstDomain,
-		User:   req.DstUid,
-		Biz:    req.DstBiz,
-	})
+	copiedInf := *rf.GetFileInfo()
+	copiedInf.Domain = req.DstDomain
+	copiedInf.User = req.DstUid
+	copiedInf.Biz = req.DstBiz
+
+	wf, err := (*handler).Create(&copiedInf)
 	if err != nil {
 		return nil, err
 	}
