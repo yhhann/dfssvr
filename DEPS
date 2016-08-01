@@ -32,15 +32,15 @@ deps {
     version: HEAD
   }
   repo {
-    name: "tools/bazel/rules_closure"
+    name: "bld_tools/bazel/rules_closure"
     version: HEAD
   }
   repo {
-    name: "tools/bazel/rules_go"
+    name: "bld_tools/bazel/rules_go"
     version: HEAD
   }
   repo {
-    name: "tools/bazel/rules_jingoal"
+    name: "bld_tools/bazel/rules_jingoal"
     version: HEAD
   }
 }
