@@ -32,7 +32,7 @@ For the first build (or when the bazel rules are updated), you need to start
 "sc serve" in a different console:
 
 ```bash
-$ sc server --proxy
+$ sc serve -proxy https://50.125.238.10:3721
 ```
 
 Next, build the DFS service:
