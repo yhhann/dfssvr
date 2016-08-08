@@ -34,6 +34,7 @@ var (
 
 	RegisterAddr    = flag.String("register-addr", "", "register address")
 	DefaultDuration = flag.Int("default-duration", 5, "default transfer duration in seconds.")
+	preferred       = flag.String("preferred", "", "preferred domains split by comma.")
 )
 
 var (
@@ -82,11 +83,27 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 		return err
 	}
 
-	if err := s.register.Register(&discovery.DfsServer{
+	dfsServer := &discovery.DfsServer{
 		Id:     name,
 		Uri:    rAddr,
 		Status: discovery.DfsServer_ONLINE,
-	}); err != nil {
+	}
+	p := strings.TrimSpace(*preferred)
+	if len(p) > 0 {
+		pre := strings.Split(p, ",")
+
+		preferred := make([]string, len(pre))
+		for _, s := range pre {
+			preferred = append(preferred, strings.TrimSpace(s))
+		}
+
+		// 0 has lowest priority, and 1 higher than 0.
+		// We will use the priority and preferred in loadbalance of client.
+		dfsServer.Priority = 1
+		dfsServer.Preferred = preferred
+	}
+
+	if err := s.register.Register(dfsServer); err != nil {
 		return err
 	}
 

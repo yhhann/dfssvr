@@ -16,12 +16,15 @@ message DfsServer {
         GOAWAY  = 2; // will be down
         OFFLINE = 3;
     }
-    string id     = 1;
-    string uri    = 2; // ip:port
-    int32  weight = 3;
-    int32  load   = 4;
-    int64  free   = 5; // free disk space
-    Status status = 6;
+    string id      = 1;
+    string uri     = 2; // ip:port
+    int32  weight  = 3;
+    int32  load    = 4;
+    int64  free    = 5; // free disk space
+    Status status  = 6;
+    int32 priority = 7; // priority of server, positive integer.
+
+    repeated string preferred = 8;
 }
 
 // DfsServerList represents a list of DfsServer.
