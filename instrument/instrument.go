@@ -32,7 +32,17 @@ var (
 	)
 	InProcess = make(chan *Measurements, *metricsBufSize)
 
-	// sucLatency instruments duration of method called successfully.
+	// sucLatencyGauge instruments duration of method called successfully.
+	sucLatencyGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "suc_latency_value",
+			Help:      "Successful RPC latency gauge in millisecond.",
+		},
+		[]string{"service"},
+	)
+	// sucLatency instruments duration distribution of method called successfully.
 	sucLatency = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "dfs2_0",
@@ -57,7 +67,17 @@ var (
 	)
 	FailedCounter = make(chan *Measurements, *metricsBufSize)
 
-	// timeoutHistogram instruments timeout of method.
+	// timeoutGauge instruments timeout of method.
+	timeoutGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "timeout_value",
+			Help:      "timeout gauge in millisecond.",
+		},
+		[]string{"service"},
+	)
+	// timeoutHistogram instruments timeout distribution of method.
 	timeoutHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "dfs2_0",
@@ -170,8 +190,10 @@ var (
 func init() {
 	prometheus.MustRegister(inProcessGauge)
 	prometheus.MustRegister(sucLatency)
+	prometheus.MustRegister(sucLatencyGauge)
 	prometheus.MustRegister(failCounter)
 	prometheus.MustRegister(timeoutHistogram)
+	prometheus.MustRegister(timeoutGauge)
 	prometheus.MustRegister(transferRate)
 	prometheus.MustRegister(fileSize)
 	prometheus.MustRegister(noDeadlineCounter)
@@ -196,6 +218,7 @@ func StartMetrics() {
 				case m := <-TimeoutHistogram:
 					// in millisecond
 					timeoutHistogram.WithLabelValues(m.Name).Observe(m.Value / 1e6)
+					timeoutGauge.WithLabelValues(m.Name).Set(m.Value / 1e6)
 				case m := <-TransferRate:
 					transferRate.WithLabelValues(m.Name).Set(m.Value)
 				case m := <-FileSize:
@@ -203,6 +226,7 @@ func StartMetrics() {
 				case m := <-SuccessDuration:
 					// in millisecond
 					sucLatency.WithLabelValues(m.Name).Observe(m.Value / 1e6)
+					sucLatencyGauge.WithLabelValues(m.Name).Set(m.Value / 1e6)
 				case m := <-StorageStatus:
 					storageStatusGauge.WithLabelValues(m.Name).Set(m.Value)
 				case m := <-IncCreated:
