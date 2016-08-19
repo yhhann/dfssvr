@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -378,7 +379,12 @@ func (f GlusterFile) GetFileInfo() *transfer.FileInfo {
 // Read reads atmost len(p) bytes into p.
 // Returns number of bytes read and an error if any.
 func (f GlusterFile) Read(p []byte) (int, error) {
-	return f.glf.Read(p)
+	nr, er := f.glf.Read(p)
+	// When reached EOF, glf returns nr=0 other than er=io.EOF, fix it.
+	if nr <= 0 {
+		return 0, io.EOF
+	}
+	return nr, er
 }
 
 // Write writes len(p) bytes to the file.
