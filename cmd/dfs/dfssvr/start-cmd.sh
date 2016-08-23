@@ -11,6 +11,8 @@ ZK_ADDR="192.168.1.57:2181"
 HEALTH_CHECK_INTERVAL=600
 HEALTH_CHECK_TIMEOUT=60
 LOG_DIR="`pwd`/log"
+METRICS_ADDR=":2020"
+METRICS_PATH="/dfs-metrics"
 
 bin/dfssvr -server-name "$SERVER_ID" \
     -listen-addr "$LISTEN_ADDR" -register-addr "$REGISTER_ADDR" \
@@ -19,5 +21,7 @@ bin/dfssvr -server-name "$SERVER_ID" \
     -zk-addr "$ZK_ADDR" \
     -health-check-interval "$HEALTH_CHECK_INTERVAL" \
     -health-check-timeout "$HEALTH_CHECK_TIMEOUT" \
+    -metrics-address "$METRICS_ADDR" \
+    -metrics-path "$METRICS_PATH" \
     -gluster-log-dir "$LOG_DIR" \
     -log_dir "$LOG_DIR" -v 2 -logtostderr=false &
