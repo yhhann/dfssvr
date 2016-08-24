@@ -71,7 +71,6 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	}
 
 	rep := &transfer.RemoveFileRep{}
-	result := false
 
 	var p fileop.DFSFileHandler
 	var fm *fileop.FileMeta
@@ -82,20 +81,20 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 		return rep, err
 	}
 
-	for _, h := range []*fileop.DFSFileHandler{nh, mh} {
-		if h == nil {
-			continue
-		}
-
-		p = *h
-		result, fm, err = p.Remove(req.Id, req.Domain)
-		if err != nil {
-			glog.Warningf("RemoveFile, failed to remove file %s %d from %v, %v", req.Id, req.Domain, p.Name(), err)
-		}
+	var dr DeleteResult
+	if nh != nil {
+		p = *nh
+		dr.nresult, dr.nMeta, dr.nerr = p.Remove(req.Id, req.Domain)
+	}
+	if mh != nil {
+		p = *mh
+		dr.mresult, dr.mMeta, dr.merr = p.Remove(req.Id, req.Domain)
 	}
 
+	result, fm, err := dr.result()
+
 	// space log.
-	if result {
+	if err == nil && result {
 		fid, ok := fm.Id.(bson.ObjectId)
 		if !ok {
 			return nil, fmt.Errorf("Invalid id, %T, %v", fm.Id, fm.Id)
@@ -121,8 +120,8 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 		Domain:    req.Domain,
 		Fid:       req.Id,
 		Elapse:    time.Since(startTime).Nanoseconds(),
-		Description: fmt.Sprintf("%s, client %s, command %s, result %t, from %v",
-			metadata.SucDelete.String(), peerAddr, event.Id.Hex(), result, p.Name()),
+		Description: fmt.Sprintf("%s, client %s, command %s, result %t, from %v, err %v",
+			metadata.SucDelete.String(), peerAddr, event.Id.Hex(), result, p.Name(), err),
 	}
 	if er := s.eventOp.SaveEvent(resultEvent); er != nil {
 		// log into file instead return.
@@ -132,11 +131,37 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	// TODO(hanyh): monitor remove.
 
 	if result {
-		glog.Infof("RemoveFile, succeeded to remove entity %s from %v.", req.Id, p.Name())
+		glog.Infof("RemoveFile, succeeded to remove entity %s from %v, err %v.", req.Id, p.Name(), err)
 	} else {
-		glog.Infof("RemoveFile, succeeded to remove reference %s from %v", req.Id, p.Name())
+		glog.Infof("RemoveFile, succeeded to remove reference %s from %v, err %v.", req.Id, p.Name(), err)
 	}
 
 	rep.Result = result
 	return rep, nil
+}
+
+type DeleteResult struct {
+	nerr    error
+	merr    error
+	nresult bool
+	mresult bool
+	nMeta   *fileop.FileMeta
+	mMeta   *fileop.FileMeta
+}
+
+func (dr *DeleteResult) result() (bool, *fileop.FileMeta, error) {
+	if dr.nerr != nil && dr.merr != nil {
+		return false, nil, fmt.Errorf("%v,%v", dr.nerr, dr.merr)
+	}
+
+	fm := dr.nMeta
+	if fm == nil && dr.mMeta != nil {
+		fm = dr.mMeta
+	}
+
+	if fm == nil {
+		return false, nil, fmt.Errorf("file meta is nil.")
+	}
+
+	return dr.nresult || dr.mresult, fm, nil
 }
