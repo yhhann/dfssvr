@@ -1,5 +1,6 @@
 #!/bin/sh
 
+cd `dirname $0`
 ## SERVER_ID is server id, unique.
 SERVER_ID="cd-dfssvr-50"
 LISTEN_ADDR=":10000"
@@ -18,6 +19,7 @@ bin/dfssvr -server-name "$SERVER_ID" \
     -listen-addr "$LISTEN_ADDR" -register-addr "$REGISTER_ADDR" \
     -shard-dburi "$SHARD_URI" -shard-name "$SHARD_DBNAME" \
     -event-dbname "$EVENT_DBNAME" \
+    -slog-dbname "$SHARD_DBNAME"
     -zk-addr "$ZK_ADDR" \
     -health-check-interval "$HEALTH_CHECK_INTERVAL" \
     -health-check-timeout "$HEALTH_CHECK_TIMEOUT" \
