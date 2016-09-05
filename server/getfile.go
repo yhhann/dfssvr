@@ -91,7 +91,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 	for {
 		length, err := file.Read(b)
 		if err == io.EOF || (err == nil && length == 0) {
-			nsecs := time.Since(startTime).Nanoseconds()
+			nsecs := time.Since(startTime).Nanoseconds() + 1
 			rate := off * 8 * 1e6 / nsecs // in kbit/s
 
 			instrumentGetFile(off, rate, serviceName, file.GetFileInfo().Biz)

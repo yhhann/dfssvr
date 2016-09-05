@@ -75,6 +75,10 @@ func checkFlags() {
 	}
 }
 
+func init() {
+	glog.MaxSize = 1024 * 1024 * 32
+}
+
 // This is a DFSServer instance.
 func main() {
 	flag.Parse()

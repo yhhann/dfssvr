@@ -102,7 +102,7 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 // finishPutFile sends receipt to client, saves event and space log.
 func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHandler, stream transfer.FileTransfer_PutFileServer, startTime time.Time, serviceName string, peerAddr string) (err error) {
 	inf := file.GetFileInfo()
-	nsecs := time.Since(startTime).Nanoseconds()
+	nsecs := time.Since(startTime).Nanoseconds() + 1
 	rate := inf.Size * 8 * 1e6 / nsecs // in kbit/s
 
 	defer func() {

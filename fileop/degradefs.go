@@ -79,7 +79,7 @@ func (h *DegradeHandler) IsHealthy() bool {
 
 // FindByMd5 finds a file by its md5.
 func (h *DegradeHandler) FindByMd5(md5 string, domain int64, size int64) (string, error) {
-	return h.FindByMd5(md5, domain, size)
+	return h.fh.FindByMd5(md5, domain, size)
 }
 
 // NewDegradeHandler returns a handler for processing Degraded files.
