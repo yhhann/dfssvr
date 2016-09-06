@@ -7,10 +7,6 @@ import (
 	"jingoal.com/dfs/proto/transfer"
 )
 
-const (
-	DefaultChunkSizeInBytes = 4096
-)
-
 type dfsFileMode uint
 
 const (

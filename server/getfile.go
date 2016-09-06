@@ -87,7 +87,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 
 	// Second, we send file content in a loop.
 	var off int64
-	b := make([]byte, fileop.DefaultChunkSizeInBytes)
+	b := make([]byte, *DefaultChunkSizeInBytes)
 	for {
 		length, err := file.Read(b)
 		if err == io.EOF || (err == nil && length == 0) {

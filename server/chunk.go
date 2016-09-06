@@ -1,6 +1,8 @@
 package server
 
 import (
+	"flag"
+
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
@@ -10,6 +12,10 @@ import (
 const (
 	MaxChunkSize = 1048576 // Max chunk size in bytes.
 	MinChunkSize = 1024    // Min chunk size in bytes.
+)
+
+var (
+	DefaultChunkSizeInBytes = flag.Int64("default-chunk-size", 1048576, "default chunk size in bytes.")
 )
 
 // NegotiateChunkSize negotiates chunk size in bytes between client and server.
