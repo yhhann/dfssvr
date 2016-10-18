@@ -44,7 +44,9 @@ func (h *GridFsHandler) Name() string {
 // Create creates a DFSFile for write with the given file info.
 func (h *GridFsHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
-	defer h.releaseSession(session, err)
+	defer func() {
+		h.releaseSession(session, err)
+	}()
 
 	file, er := gridfs.Create(info.Name)
 	if er != nil {
@@ -83,7 +85,9 @@ func (h *GridFsHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 // Open opens a DFSFile for read with given id and domain.
 func (h *GridFsHandler) Open(id string, domain int64) (dfsFile DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
-	defer h.releaseSession(session, err)
+	defer func() {
+		h.releaseSession(session, err)
+	}()
 
 	gridFile, er := h.duplfs.Find(gridfs, id)
 	if er != nil {

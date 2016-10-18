@@ -99,7 +99,9 @@ func (h *GlusterHandler) releaseSession(session *mgo.Session, err error) {
 // Create creates a DFSFile for write.
 func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
-	defer h.releaseSession(session, err)
+	defer func() {
+		h.releaseSession(session, err)
+	}()
 
 	gridFile, er := gridfs.Create(info.Name)
 	if er != nil {
@@ -161,7 +163,9 @@ func (h *GlusterHandler) createGlusterFile(name string) (*GlusterFile, error) {
 // Open opens a file for read.
 func (h *GlusterHandler) Open(id string, domain int64) (f DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
-	defer h.releaseSession(session, err)
+	defer func() {
+		h.releaseSession(session, err)
+	}()
 
 	gridFile, er := h.duplfs.Find(gridfs, id)
 	if er != nil {

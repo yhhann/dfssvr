@@ -130,12 +130,12 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string,
 	glog.Infof("Try to start DFS server %v on %v\n", name, lsnAddr.String())
 
 	server = new(DFSServer)
-	defer func(s *DFSServer) {
-		if err != nil {
-			s.Close()
-			s = nil
+	defer func() {
+		if err != nil && server != nil {
+			server.Close()
+			server = nil
 		}
-	}(server)
+	}()
 
 	zk := notice.NewDfsZK(strings.Split(zkAddrs, ","), time.Duration(zkTimeout)*time.Millisecond)
 	r := disc.NewZKDfsServerRegister(zk)
