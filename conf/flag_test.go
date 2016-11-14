@@ -15,14 +15,14 @@ var (
 
 func Test(t *testing.T) {
 	flag.Parse()
-	InitFlag()
+	initFlag("this-node")
 
-	printFlag()
+	fmt.Printf("flage before changed: %s", GetAllFlags())
 	time.Sleep(1 * time.Second)
 
 	update("a", "1010")
 	update("b", "lalala")
 	update("c", "true")
 
-	printFlag()
+	fmt.Printf("flage after changed: %s", GetAllFlags())
 }

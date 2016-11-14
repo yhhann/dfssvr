@@ -1,11 +1,16 @@
 package conf
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"strings"
 
 	"github.com/golang/glog"
+)
+
+const (
+	FeatureFlagPrefix = "featureflag"
 )
 
 var (
@@ -48,14 +53,37 @@ func update(name string, value string) {
 		key = name[pos+1:]
 	}
 
-	if len(prefix) == 0 {
+	switch {
+	case len(prefix) == 0:
 		updateGeneral(key, value)
+	case prefix == FeatureFlagPrefix:
+		updateFeature(key, value)
+	case prefix == nodeName:
+		updatePrivate(key, value)
+	default:
+		return
+	}
+}
+
+func updateFeature(key string, value string) {
+	var ff FeatureFlag
+	glog.V(4).Infof("Feature string: %s", value)
+
+	if err := json.Unmarshal([]byte(value), &ff); err != nil {
+		glog.Warningf("Unmarshal feature error %v, %s", err, value)
+		return
+	}
+	if err := ff.validate(); err != nil {
+		glog.Warningf("Validate feature error %v", err)
+		return
+	}
+	if err := UpdateFlag(&ff); err != nil {
+		glog.Warningf("Update feature error %v, %v", err, ff)
 		return
 	}
 
-	if prefix == nodeName {
-		updatePrivate(key, value)
-	}
+	glog.V(3).Infof("Feature: %+v", ff)
+	return
 }
 
 func updateGeneral(key string, value string) {
