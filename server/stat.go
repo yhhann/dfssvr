@@ -38,13 +38,12 @@ func (s *DFSServer) statBiz(c interface{}, r interface{}, args []interface{}) (i
 		return nil, AssertionError
 	}
 
-	_, file, err := s.openFileForRead(req.Id, req.Domain)
+	_, _, info, err := s.findFileForRead(req.Id, req.Domain)
 	if err != nil {
 		return nil, err
 	}
-	file.Close()
 
 	return &transfer.PutFileRep{
-		File: file.GetFileInfo(),
+		File: info,
 	}, nil
 }

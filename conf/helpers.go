@@ -1,5 +1,9 @@
 package conf
 
+// The content of this file is copy from
+// https://github.com/AntoineAugusti/feature-flags/blob/master/models/feature.go
+// Thanks for the original author.
+
 import (
 	"strconv"
 )

@@ -48,7 +48,7 @@ func (s *DFSServer) exist(id string, domain int64) (result bool, err error) {
 		}
 	}()
 
-	_, fid, err := s.findFileForRead(id, domain)
+	_, fid, _, err := s.findFileForRead(id, domain)
 	if err != nil {
 		return
 	}

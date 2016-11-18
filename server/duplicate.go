@@ -85,7 +85,7 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 }
 
 func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {
-	h, _, err := s.findFileForRead(oid, domain)
+	h, _, _, err := s.findFileForRead(oid, domain)
 	if err != nil {
 		return "", err
 	}

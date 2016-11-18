@@ -6,6 +6,7 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
+	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/proto/transfer"
 )
 
@@ -38,8 +39,9 @@ func (s *DFSServer) NegotiateChunkSize(ctx context.Context, req *transfer.Negoti
 
 func (s *DFSServer) negotiateBiz(ctx interface{}, req interface{}, args []interface{}) (interface{}, error) {
 	if r, ok := req.(*transfer.NegotiateChunkSizeReq); ok {
+		fileop.NegotiatedChunkSize = sanitizeChunkSize(r.Size)
 		rep := &transfer.NegotiateChunkSizeRep{
-			Size: sanitizeChunkSize(r.Size),
+			Size: fileop.NegotiatedChunkSize,
 		}
 		return rep, nil
 	}

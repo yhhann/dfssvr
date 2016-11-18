@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/proto/transfer"
 )
 
 func (s *DFSServer) openFileForRead(id string, domain int64) (fileop.DFSFileHandler, fileop.DFSFile, error) {
@@ -39,10 +40,10 @@ func openFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFi
 	return nil, nil, fmt.Errorf("get file error: normal site is nil")
 }
 
-func (s *DFSServer) findFileForRead(id string, domain int64) (fileop.DFSFileHandler, string, error) {
+func (s *DFSServer) findFileForRead(id string, domain int64) (fileop.DFSFileHandler, string, *transfer.FileInfo, error) {
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(domain)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 
 	var m fileop.DFSFileHandler
@@ -53,21 +54,21 @@ func (s *DFSServer) findFileForRead(id string, domain int64) (fileop.DFSFileHand
 	return findFile(id, *nh, m)
 }
 
-func findFile(id string, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFileHandler, string, error) {
+func findFile(id string, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fileop.DFSFileHandler, string, *transfer.FileInfo, error) {
 	var h fileop.DFSFileHandler
 
 	if mh != nil && nh != nil {
 		h = mh
-		fid, err := mh.Find(id)
+		fid, _, info, err := mh.Find(id)
 		if err != nil || fid == "" { // Need not to check mgo.ErrNotFound
 			h = nh
-			fid, err = nh.Find(id)
+			fid, _, info, err = nh.Find(id)
 		}
-		return h, fid, err
+		return h, fid, info, err
 	}
 	if mh == nil && nh != nil {
-		fid, err := nh.Find(id)
-		return nh, fid, err
+		fid, _, info, err := nh.Find(id)
+		return nh, fid, info, err
 	}
-	return nil, "", fmt.Errorf("get file error: normal site is nil")
+	return nil, "", nil, fmt.Errorf("get file error: normal site is nil")
 }

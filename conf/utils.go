@@ -3,6 +3,8 @@ package conf
 import (
 	"fmt"
 	"sync"
+
+	"jingoal.com/dfs/instrument"
 )
 
 var (
@@ -19,6 +21,8 @@ func PutFlag(f *FeatureFlag) error {
 		return fmt.Errorf("feature already existed")
 	}
 	features[f.Key] = f
+
+	instrument.FlagGauge <- flagToMeasure(f)
 
 	return nil
 }
@@ -50,5 +54,26 @@ func UpdateFlag(f *FeatureFlag) error {
 	}
 	features[f.Key] = f
 
+	instrument.FlagGauge <- flagToMeasure(f)
+
 	return nil
+}
+
+func flagToMeasure(f *FeatureFlag) *instrument.Measurements {
+	v := uint32(1e9)
+	v += f.Percentage * 1e7
+
+	if len(f.Users) > 0 {
+		v += f.Users[0]
+	}
+
+	vf := float64(v)
+	if !f.Enabled {
+		vf = vf * -1
+	}
+
+	return &instrument.Measurements{
+		Name:  f.Key,
+		Value: vf,
+	}
 }

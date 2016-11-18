@@ -173,10 +173,8 @@ func (h *GlusterHandler) Open(id string, domain int64) (f DFSFile, err error) {
 		return
 	}
 
-	gridMeta := struct {
-		Bizname string
-	}{}
-	if err = gridFile.GetMeta(&gridMeta); err != nil {
+	gridMeta, err := getDFSFileMeta(gridFile)
+	if err != nil {
 		return
 	}
 
@@ -217,24 +215,38 @@ func (h *GlusterHandler) Duplicate(oid string) (string, error) {
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
-func (h *GlusterHandler) Find(id string) (string, error) {
+func (h *GlusterHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileInfo, error) {
 	gridFile, err := h.duplfs.Find(h.gridfs, id)
 	if err == mgo.ErrNotFound {
-		return "", nil
+		return "", nil, nil, nil
 	}
 	if err != nil {
-		return "", err
+		return "", nil, nil, err
 	}
 	defer gridFile.Close()
 
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		return "", fmt.Errorf("find file error %s", id)
+		return "", nil, nil, fmt.Errorf("find file error %s", id)
+	}
+
+	meta, err := getDFSFileMeta(gridFile)
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	info := &transfer.FileInfo{
+		Id:   id,
+		Name: gridFile.Name(),
+		Size: gridFile.Size(),
+		Md5:  gridFile.MD5(),
+		Biz:  meta.Bizname,
+		// TODO(hanyh): add Domain and User
 	}
 
 	glog.Infof("Succeeded to find file %s, return %s", id, oid.Hex())
 
-	return oid.Hex(), nil
+	return oid.Hex(), meta, info, nil
 }
 
 // Remove deletes file by its id and domain.
@@ -371,6 +383,8 @@ type GlusterFile struct {
 	mode    dfsFileMode
 	handler *GlusterHandler
 
+	meta map[string]interface{}
+
 	session *mgo.Session
 	gridfs  *mgo.GridFS
 }
@@ -378,6 +392,21 @@ type GlusterFile struct {
 // GetFileInfo returns file meta info.
 func (f GlusterFile) GetFileInfo() *transfer.FileInfo {
 	return f.info
+}
+
+func (f GlusterFile) updateFileMeta(m map[string]interface{}) {
+	for k, v := range m {
+		f.meta[k] = v
+	}
+}
+
+func (f GlusterFile) getFileMeta() *DFSFileMeta {
+	m, err := getDFSFileMeta(f.grf)
+	if err != nil {
+		return nil
+	}
+
+	return m
 }
 
 // Read reads atmost len(p) bytes into p.
@@ -425,7 +454,8 @@ func (f GlusterFile) Close() error {
 	}
 
 	if f.mode == FileModeWrite {
-		f.grf.SetMeta(bson.M{"bizname": f.info.Biz})
+		f.meta["bizname"] = f.info.Biz
+		f.grf.SetMeta(f.meta)
 	}
 
 	if err := f.grf.Close(); err != nil {

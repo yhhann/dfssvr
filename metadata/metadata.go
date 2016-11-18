@@ -4,8 +4,9 @@ package metadata
 import "gopkg.in/mgo.v2/bson"
 
 const (
-	RegularServer ShardType = iota // Regular server.
-	DegradeServer                  // Degrade server.
+	RegularServer   ShardType = iota // Regular server.
+	DegradeServer                    // Degrade server.
+	BackstoreServer                  // Back store server.
 )
 
 // ShardType represents the type of a shard.
@@ -34,4 +35,6 @@ type Shard struct {
 	VolName     string        `bson:"volName,omitempty"`     // gfapi volume name
 	VolBase     string        `bson:"volBase,omitempty"`     // gfapi base dir
 	ShdType     ShardType     `bson:"shdType,omitempty"`     // shard type
+	MasterUri   string        `bson:"masterUri,omitempty"`   // master uri
+	Replica     string        `bson:"replica,omitempty"`     // replica
 }

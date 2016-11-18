@@ -17,17 +17,30 @@ const (
 type HandlerType uint
 
 const (
-	GlusterType HandlerType = 1 << iota // For gluster type
-	GridFSType                          // For gridfs type
-	DegradeType                         // For degrade type
+	GlusterType   HandlerType = 1 << iota // For gluster type
+	GridFSType                            // For gridfs type
+	DegradeType                           // For degrade type
+	BackStoreType                         // For back store type
 )
+
+type DFSFileMeta struct {
+	Bizname    string `bson:"bizname"`
+	Fid        string `bson:"weedfid"`
+	Collection string `bson:"collection"`
+}
 
 // DFSFile represents a file of the underlying storage.
 type DFSFile interface {
 	io.ReadWriteCloser
 
-	// GetFileInfo returns file meta info.
+	// GetFileInfo returns file info.
 	GetFileInfo() *transfer.FileInfo
+
+	// updateFileMeta updates file dfs meta.
+	updateFileMeta(map[string]interface{})
+
+	// getFileMeta returns file dfs meta.
+	getFileMeta() *DFSFileMeta
 }
 
 // DFSFileHandler represents the file handler of underlying storage.
@@ -50,7 +63,7 @@ type DFSFileHandler interface {
 	// Find finds a file, if the file not exists, return empty string.
 	// If the file exists, return its file id.
 	// If the file exists and is a duplication, return its primitive file id.
-	Find(fid string) (string, error)
+	Find(fid string) (string, *DFSFileMeta, *transfer.FileInfo, error)
 
 	// Name returns handler's name.
 	Name() string

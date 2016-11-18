@@ -70,19 +70,19 @@ func updateFeature(key string, value string) {
 	glog.V(4).Infof("Feature string: %s", value)
 
 	if err := json.Unmarshal([]byte(value), &ff); err != nil {
-		glog.Warningf("Unmarshal feature error %v, %s", err, value)
+		glog.Warningf("Failed to unmarshal %s, %v", value, err)
 		return
 	}
 	if err := ff.validate(); err != nil {
-		glog.Warningf("Validate feature error %v", err)
+		glog.Warningf("Failed to validate feature %v, %v", ff, err)
 		return
 	}
 	if err := UpdateFlag(&ff); err != nil {
-		glog.Warningf("Update feature error %v, %v", err, ff)
+		glog.Warningf("Failed to update feature %v, %v", ff, err)
 		return
 	}
 
-	glog.V(3).Infof("Feature: %+v", ff)
+	glog.V(3).Infof("Succeeded to update feature: %v", ff)
 	return
 }
 

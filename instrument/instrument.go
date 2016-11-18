@@ -185,6 +185,28 @@ var (
 		[]string{"service"},
 	)
 	PrejudgeExceed = make(chan *Measurements, *metricsBufSize)
+
+	flagGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "flag",
+			Help:      "flag gauge",
+		},
+		[]string{"flagkey"},
+	)
+	FlagGauge = make(chan *Measurements, *metricsBufSize)
+
+	backstoreFileCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "backstore_file_counter",
+			Help:      "Backstore file counter",
+		},
+		[]string{"service"},
+	)
+	BackstoreFileCounter = make(chan *Measurements, *metricsBufSize)
 )
 
 func init() {
@@ -202,6 +224,8 @@ func init() {
 	prometheus.MustRegister(copiedSessionGauge)
 	prometheus.MustRegister(clonedSessionGauge)
 	prometheus.MustRegister(prejudgeExceedCounter)
+	prometheus.MustRegister(flagGauge)
+	prometheus.MustRegister(backstoreFileCounter)
 }
 
 func StartMetrics() {
@@ -243,6 +267,10 @@ func StartMetrics() {
 					clonedSessionGauge.WithLabelValues(m.Name).Dec()
 				case m := <-PrejudgeExceed:
 					prejudgeExceedCounter.WithLabelValues(m.Name).Inc()
+				case m := <-FlagGauge:
+					flagGauge.WithLabelValues(m.Name).Set(m.Value)
+				case m := <-BackstoreFileCounter:
+					backstoreFileCounter.WithLabelValues(m.Name).Inc()
 				}
 			}
 		}()

@@ -1,18 +1,20 @@
 package conf
 
-const (
-	// Flag to enable/disable store to weedfs.
-	FlagKeyAsyncStoreToWeed = "async-store-to-weed"
+// Create two feature flags to work together with back store files.
 
-	// Flag to enable/disable read from weedfs.
-	FlagKeyReadFromWeed = "read-from-weed"
+const (
+	// Flag to enable/disable back store.
+	FlagKeyBackStore = "backstore"
+
+	// Flag to enable/disable read from back store.
+	FlagKeyReadFromBackStore = "read_from_backstore"
 )
 
 func init() {
 	features = make(map[string]*FeatureFlag)
 
 	PutFlag(&FeatureFlag{
-		Key:        FlagKeyAsyncStoreToWeed,
+		Key:        FlagKeyBackStore,
 		Enabled:    false,
 		Users:      []uint32{},
 		Groups:     []string{},
@@ -20,7 +22,7 @@ func init() {
 	})
 
 	PutFlag(&FeatureFlag{
-		Key:        FlagKeyReadFromWeed,
+		Key:        FlagKeyReadFromBackStore,
 		Enabled:    false,
 		Users:      []uint32{},
 		Groups:     []string{},

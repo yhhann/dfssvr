@@ -77,6 +77,7 @@ func (h *GridFsHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 		mode:     FileModeWrite,
 		session:  session,
 		gridfs:   gridfs,
+		meta:     make(map[string]interface{}),
 	}
 
 	return
@@ -95,10 +96,8 @@ func (h *GridFsHandler) Open(id string, domain int64) (dfsFile DFSFile, err erro
 		return
 	}
 
-	gridMeta := struct {
-		Bizname string
-	}{}
-	if err = gridFile.GetMeta(&gridMeta); err != nil {
+	gridMeta, err := getDFSFileMeta(gridFile)
+	if err != nil {
 		return
 	}
 
@@ -131,24 +130,38 @@ func (h *GridFsHandler) Duplicate(oid string) (string, error) {
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
-func (h *GridFsHandler) Find(id string) (string, error) {
+func (h *GridFsHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileInfo, error) {
 	gridFile, err := h.duplfs.Find(h.gridfs, id)
 	if err == mgo.ErrNotFound {
-		return "", nil
+		return "", nil, nil, nil
 	}
 	if err != nil {
-		return "", err
+		return "", nil, nil, err
 	}
 	defer gridFile.Close()
 
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		return "", fmt.Errorf("Invalid id, %T, %v", gridFile.Id(), gridFile.Id())
+		return "", nil, nil, fmt.Errorf("find file error %s", id)
+	}
+
+	meta, err := getDFSFileMeta(gridFile)
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	info := &transfer.FileInfo{
+		Id:   id,
+		Name: gridFile.Name(),
+		Size: gridFile.Size(),
+		Md5:  gridFile.MD5(),
+		Biz:  meta.Bizname,
+		// TODO(hanyh): add Domain and User
 	}
 
 	glog.Infof("Succeeded to find file %s, return %s", id, oid.Hex())
 
-	return oid.Hex(), nil
+	return oid.Hex(), meta, info, nil
 }
 
 // Remove deletes a file with its id and domain.
@@ -238,6 +251,8 @@ type GridFsFile struct {
 	mode    dfsFileMode
 	handler *GridFsHandler
 
+	meta map[string]interface{}
+
 	session *mgo.Session
 	gridfs  *mgo.GridFS
 }
@@ -245,6 +260,21 @@ type GridFsFile struct {
 // GetFileInfo returns file meta info.
 func (f GridFsFile) GetFileInfo() *transfer.FileInfo {
 	return f.info
+}
+
+func (f GridFsFile) updateFileMeta(m map[string]interface{}) {
+	for k, v := range m {
+		f.meta[k] = v
+	}
+}
+
+func (f GridFsFile) getFileMeta() *DFSFileMeta {
+	meta, err := getDFSFileMeta(f.GridFile)
+	if err != nil {
+		return nil
+	}
+
+	return meta
 }
 
 // Close closes GridFsFile.
@@ -257,7 +287,8 @@ func (f *GridFsFile) Close() error {
 	}()
 
 	if f.mode == FileModeWrite {
-		f.SetMeta(bson.M{"bizname": f.info.Biz})
+		f.meta["bizname"] = f.info.Biz
+		f.SetMeta(f.meta)
 	}
 
 	if err := f.GridFile.Close(); err != nil {
@@ -301,4 +332,13 @@ func (f GridFsFile) additionalMetadata() bson.D {
 	})
 
 	return opdata
+}
+
+func getDFSFileMeta(g *mgo.GridFile) (*DFSFileMeta, error) {
+	gridMeta := &DFSFileMeta{}
+	if err := g.GetMeta(gridMeta); err != nil {
+		return nil, err
+	}
+
+	return gridMeta, nil
 }

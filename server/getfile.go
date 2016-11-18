@@ -87,9 +87,25 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 
 	// Second, we send file content in a loop.
 	var off int64
-	b := make([]byte, *DefaultChunkSizeInBytes)
+	b := make([]byte, fileop.NegotiatedChunkSize)
 	for {
 		length, err := file.Read(b)
+		if length > 0 {
+			err = stream.Send(&transfer.GetFileRep{
+				Result: &transfer.GetFileRep_Chunk{
+					Chunk: &transfer.Chunk{
+						Pos:     off,
+						Length:  int64(length),
+						Payload: b[:length],
+					},
+				},
+			})
+			if err != nil {
+				glog.Warningf("GetFile, send to client error, %s, %v", req.Id, err)
+				return err
+			}
+		}
+
 		if err == io.EOF || (err == nil && length == 0) {
 			nsecs := time.Since(startTime).Nanoseconds() + 1
 			rate := off * 8 * 1e6 / nsecs // in kbit/s
@@ -101,19 +117,6 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 		}
 		if err != nil {
 			glog.Warningf("GetFile, read source error, %s, %v", req.Id, err)
-			return err
-		}
-		err = stream.Send(&transfer.GetFileRep{
-			Result: &transfer.GetFileRep_Chunk{
-				Chunk: &transfer.Chunk{
-					Pos:     off,
-					Length:  int64(length),
-					Payload: b[:length],
-				},
-			},
-		})
-		if err != nil {
-			glog.Warningf("GetFile, send to client error, %s, %v", req.Id, err)
 			return err
 		}
 

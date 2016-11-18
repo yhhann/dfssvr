@@ -53,7 +53,7 @@ func (h *DegradeHandler) Duplicate(oid string) (string, error) {
 // Find finds a file, if the file not exists, return empty string.
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
-func (h *DegradeHandler) Find(fid string) (string, error) {
+func (h *DegradeHandler) Find(fid string) (string, *DFSFileMeta, *transfer.FileInfo, error) {
 	return h.fh.Find(fid)
 }
 

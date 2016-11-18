@@ -55,6 +55,8 @@ type HandlerSelector struct {
 	degradeShardHandler *ShardHandler
 
 	dfsServer *DFSServer
+
+	backStoreShard *metadata.Shard
 }
 
 func (hs *HandlerSelector) addRecovery(name string, rInfo chan *FileRecoveryInfo) {
@@ -135,7 +137,6 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 	} else { // GridFS
 		handler, err = fileop.NewGridFsHandler(shard)
 	}
-
 	if err != nil {
 		glog.Warningf("Failed to create handler, shard: %v, error: %v", shard, err)
 		return
@@ -151,6 +152,11 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 		hs.degradeShardHandler = NewShardHandler(dh, statusOk, hs)
 		glog.Infof("Succeeded to create degrade handler, shard: %s", shard.Name)
 		return
+	}
+
+	if hs.backStoreShard != nil {
+		handler = fileop.NewBackStoreHandler(handler, hs.backStoreShard)
+		glog.Infof("Succeeded to attach handler %s with back store %s", handler.Name(), hs.backStoreShard.Name)
 	}
 
 	if sh, ok := hs.getShardHandler(handler.Name()); ok {
@@ -424,6 +430,16 @@ func NewHandlerSelector(dfsServer *DFSServer) (*HandlerSelector, error) {
 	shards := hs.dfsServer.mOp.FindAllShards()
 
 	for _, shard := range shards {
+		if shard.ShdType == metadata.BackstoreServer {
+			hs.backStoreShard = shard
+			break
+		}
+	}
+
+	for _, shard := range shards {
+		if shard.ShdType == metadata.BackstoreServer {
+			continue
+		}
 		hs.addHandler(shard)
 	}
 
