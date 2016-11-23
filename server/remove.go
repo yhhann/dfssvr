@@ -1,6 +1,7 @@
 package server
 
 import (
+	"flag"
 	"fmt"
 	"time"
 
@@ -14,11 +15,15 @@ import (
 	"jingoal.com/dfs/util"
 )
 
+var (
+	logRemoveCommand = flag.Bool("log-remove-cmd", false, "log the remove command for audit.")
+)
+
 // Remove deletes a file.
 func (s *DFSServer) RemoveFile(ctx context.Context, req *transfer.RemoveFileReq) (*transfer.RemoveFileRep, error) {
 	serviceName := "RemoveFile"
 	peerAddr := getPeerAddressString(ctx)
-	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.V(3).Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	clientDesc := ""
 	if req.GetDesc() != nil {
@@ -56,18 +61,20 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	startTime := time.Now()
 
 	// log the remove command for audit.
-	event := &metadata.Event{
-		EType:     metadata.CommandDelete,
-		Timestamp: util.GetTimeInMilliSecond(),
-		Domain:    req.Domain,
-		Fid:       req.Id,
-		Elapse:    -1,
-		Description: fmt.Sprintf("%s, client %s\n%s", metadata.CommandDelete.String(),
-			peerAddr, clientDesc),
-	}
-	if er := s.eventOp.SaveEvent(event); er != nil {
-		// log into file instead return.
-		glog.Warningf("%s, error: %v", event.String(), er)
+	if *logRemoveCommand {
+		event := &metadata.Event{
+			EType:     metadata.CommandDelete,
+			Timestamp: util.GetTimeInMilliSecond(),
+			Domain:    req.Domain,
+			Fid:       req.Id,
+			Elapse:    -1,
+			Description: fmt.Sprintf("%s, client %s\n%s", metadata.CommandDelete.String(),
+				peerAddr, clientDesc),
+		}
+		if er := s.eventOp.SaveEvent(event); er != nil {
+			// log into file instead return.
+			glog.Warningf("%s, error: %v", event.String(), er)
+		}
 	}
 
 	rep := &transfer.RemoveFileRep{}
@@ -120,12 +127,12 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 		Domain:    req.Domain,
 		Fid:       req.Id,
 		Elapse:    time.Since(startTime).Nanoseconds(),
-		Description: fmt.Sprintf("%s, client %s, command %s, result %t, from %v, err %v",
-			metadata.SucDelete.String(), peerAddr, event.Id.Hex(), result, p.Name(), err),
+		Description: fmt.Sprintf("%s, client %s, result %t, from %v, err %v",
+			metadata.SucDelete.String(), peerAddr, result, p.Name(), err),
 	}
 	if er := s.eventOp.SaveEvent(resultEvent); er != nil {
 		// log into file instead return.
-		glog.Warningf("%s, error: %v", event.String(), er)
+		glog.Warningf("save remove event error: %v", er)
 	}
 
 	// TODO(hanyh): monitor remove.
@@ -159,9 +166,11 @@ func (dr *DeleteResult) result() (bool, *fileop.FileMeta, error) {
 		fm = dr.mMeta
 	}
 
-	if fm == nil {
+	r := dr.nresult || dr.mresult
+
+	if fm == nil && r {
 		return false, nil, fmt.Errorf("file meta is nil.")
 	}
 
-	return dr.nresult || dr.mresult, fm, nil
+	return r, fm, nil
 }

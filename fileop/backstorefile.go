@@ -63,7 +63,7 @@ func (bsh *BackStoreHandler) Open(id string, domain int64) (DFSFile, error) {
 
 	var wFile *weedfs.WeedFile
 	readFromOrig := true
-	if isReadFromBackStore(domain) && meta != nil {
+	if isReadFromBackStore(domain) && meta != nil && len(meta.Fid) > 0 {
 		readFromOrig = false
 		wFile, err = weedfs.Open(meta.Fid, domain, bsh.BackStoreShard.MasterUri)
 		if err != nil {

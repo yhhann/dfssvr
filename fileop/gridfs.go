@@ -117,6 +117,7 @@ func (h *GridFsHandler) Open(id string, domain int64) (dfsFile DFSFile, err erro
 		mode:     FileModeRead,
 		session:  session,
 		gridfs:   gridfs,
+		meta:     make(map[string]interface{}),
 	}
 
 	return
@@ -166,24 +167,22 @@ func (h *GridFsHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileInf
 
 // Remove deletes a file with its id and domain.
 func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
-	f, err := h.duplfs.Find(h.gridfs, id)
-	if err != nil {
-		return false, nil, err
-	}
-	defer f.Close()
-
-	query := bson.D{
-		{"_id", f.Id()},
-	}
-	m, err := LookupFileMeta(h.gridfs, query)
-	if err != nil {
-		return false, nil, err
-	}
-
-	result, err := h.duplfs.Delete(h.gridfs, id)
+	result, entityId, err := h.duplfs.LazyDelete(h.gridfs, id)
 	if err != nil {
 		glog.Warningf("Failed to remove file %s %d, error: %s", id, domain, err)
 		return false, nil, err
+	}
+
+	var m *FileMeta
+	if result {
+		query := bson.D{
+			{"_id", *entityId},
+		}
+		m, err = LookupFileMeta(h.gridfs, query)
+		if err != nil {
+			return false, nil, err
+		}
+		removeEntity(h.gridfs, *entityId)
 	}
 
 	return result, m, nil

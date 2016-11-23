@@ -196,60 +196,62 @@ func (duplfs *DuplFs) DuplicateWithId(gridfs *mgo.GridFS, oid string, dupId stri
 	return util.GetDuplId(dupl.Id.Hex()), nil
 }
 
-// Delete deletes a duplication or a real file.
+// LazyDelete deletes a duplication or a real file.
 // It returns true when deletes a real file successfully.
-func (duplfs *DuplFs) Delete(gridfs *mgo.GridFS, dId string) (bool, error) {
+func (duplfs *DuplFs) LazyDelete(gridfs *mgo.GridFS, dId string) (bool, *bson.ObjectId, error) {
 	var status int64
 	var result bool
 
 	realId, err := hexString2ObjectId(util.GetRealId(dId))
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 
 	dupl, err := duplfs.LookupDuplById(*realId)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 
+	entityId := realId
 	if dupl == nil {
 		if util.IsDuplId(dId) {
 			status = -10000
 		} else {
 			ref, err := duplfs.LookupRefById(*realId)
 			if err != nil {
-				return false, err
+				return false, nil, err
 			}
 			if ref == nil {
-				gridfs.RemoveId(realId)
+				lazyRemove(gridfs, *realId)
 				result = true
 			} else {
 				status = -20000
 			}
 		}
 	} else {
+		entityId = &(dupl.Ref)
 		err := duplfs.RemoveDupl(dupl.Id)
 		if err != nil {
-			return false, err
+			return false, nil, err
 		}
 
 		status, err = duplfs.decAndRemove(gridfs, dupl.Ref)
 		if err != nil {
-			return false, err
+			return false, nil, err
 		}
 		if status < 0 {
 			result = true
 		}
 	}
 
-	return result, nil
+	return result, entityId, nil
 }
 
 func (duplfs *DuplFs) decAndRemove(gridfs *mgo.GridFS, id bson.ObjectId) (int64, error) {
 	ref, err := duplfs.DecRefCnt(id)
 	if err == mgo.ErrNotFound {
 		duplfs.RemoveRef(id)
-		gridfs.RemoveId(id)
+		lazyRemove(gridfs, id)
 		return -1, nil
 	}
 	if err != nil {
@@ -258,7 +260,7 @@ func (duplfs *DuplFs) decAndRemove(gridfs *mgo.GridFS, id bson.ObjectId) (int64,
 
 	if ref.RefCnt < 0 {
 		duplfs.RemoveRef(id)
-		gridfs.RemoveId(id)
+		lazyRemove(gridfs, id)
 	}
 
 	return ref.RefCnt, nil

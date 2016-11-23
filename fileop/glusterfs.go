@@ -157,6 +157,7 @@ func (h *GlusterHandler) createGlusterFile(name string) (*GlusterFile, error) {
 		md5:     md5.New(),
 		mode:    FileModeWrite,
 		handler: h,
+		meta:    make(map[string]interface{}),
 	}, nil
 }
 
@@ -251,33 +252,24 @@ func (h *GlusterHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileIn
 
 // Remove deletes file by its id and domain.
 func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
-	f, err := h.duplfs.Find(h.gridfs, id)
-	if err != nil {
-		return false, nil, err
-	}
-	defer f.Close()
-
-	query := bson.D{
-		{"_id", f.Id()},
-	}
-	m, err := LookupFileMeta(h.gridfs, query)
-	if err != nil {
-		return false, nil, err
-	}
-
-	result, err := h.duplfs.Delete(h.gridfs, id)
+	result, entityId, err := h.duplfs.LazyDelete(h.gridfs, id)
 	if err != nil {
 		glog.Warningf("Failed to remove file %s %d, error: %s", id, domain, err)
 		return false, nil, err
 	}
 
+	var m *FileMeta
 	if result {
-		oid, ok := f.Id().(bson.ObjectId)
-		if !ok {
-			return false, nil, nil
+		query := bson.D{
+			{"_id", *entityId},
 		}
+		m, err = LookupFileMeta(h.gridfs, query)
+		if err != nil {
+			return false, nil, err
+		}
+		removeEntity(h.gridfs, *entityId)
 
-		filePath := util.GetFilePath(h.VolBase, domain, oid.Hex(), h.PathVersion, h.PathDigit)
+		filePath := util.GetFilePath(h.VolBase, domain, (*entityId).Hex(), h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
 			glog.Warningf("Failed to remove file %s %d from %s", id, domain, filePath)
 		}
@@ -296,6 +288,7 @@ func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
 		glf:     f,
 		mode:    FileModeRead,
 		handler: h,
+		meta:    make(map[string]interface{}),
 	}, nil
 }
 
