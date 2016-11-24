@@ -16,7 +16,7 @@ func init() {
 	PutFlag(&FeatureFlag{
 		Key:        FlagKeyBackStore,
 		Enabled:    false,
-		Users:      []uint32{},
+		Domains:    []uint32{},
 		Groups:     []string{},
 		Percentage: uint32(0),
 	})
@@ -24,7 +24,7 @@ func init() {
 	PutFlag(&FeatureFlag{
 		Key:        FlagKeyReadFromBackStore,
 		Enabled:    false,
-		Users:      []uint32{},
+		Domains:    []uint32{},
 		Groups:     []string{},
 		Percentage: uint32(0),
 	})

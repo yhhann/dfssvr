@@ -233,7 +233,7 @@ func isReadFromBackStore(domain int64) bool {
 		return false
 	}
 
-	return ff.UserHasAccess(uint32(domain))
+	return ff.DomainHasAccess(uint32(domain))
 }
 
 func isWriteToBackStore(domain int64) bool {
@@ -243,5 +243,5 @@ func isWriteToBackStore(domain int64) bool {
 		return false
 	}
 
-	return ff.UserHasAccess(uint32(domain))
+	return ff.DomainHasAccess(uint32(domain))
 }

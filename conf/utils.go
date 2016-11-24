@@ -43,7 +43,7 @@ func GetFlag(key string) (*FeatureFlag, error) {
 // UpdateFlag updates an existed feature flag.
 // for example:
 // set/create /shard/conf/dfs.svr.featureflag.foo
-//  {"key":"foo","enabled":false,"percentage":100,"users":[1,2,3],
+//  {"key":"foo","enabled":false,"percentage":100,"domains":[1,2,3],
 //  "groups":["a","b","c"]}
 func UpdateFlag(f *FeatureFlag) error {
 	flock.Lock()
@@ -63,8 +63,8 @@ func flagToMeasure(f *FeatureFlag) *instrument.Measurements {
 	v := uint32(1e9)
 	v += f.Percentage * 1e7
 
-	if len(f.Users) > 0 {
-		v += f.Users[0]
+	if len(f.Domains) > 0 {
+		v += f.Domains[0]
 	}
 
 	vf := float64(v)

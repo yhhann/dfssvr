@@ -16,13 +16,13 @@ type FeatureFlag struct {
 	Key string `json:"key"`
 	// Tell if a feature flag is enabled. If set to false,
 	// the feature flag can still be partially enabled thanks to
-	// the Users, Groups and Percentage properties
+	// the Domains, Groups and Percentage properties
 	Enabled bool `json:"enabled"`
-	// Gives access to a feature to specific user IDs
-	Users []uint32 `json:"users"`
+	// Gives access to a feature to specific domain IDs
+	Domains []uint32 `json:"domains"`
 	// Gives access to a feature to specific groups
 	Groups []string `json:"groups"`
-	// Gives access to a feature to a percentage of users
+	// Gives access to a feature to a percentage of domains
 	Percentage uint32 `json:"percentage"`
 }
 
@@ -51,7 +51,7 @@ func (f FeatureFlag) isEnabled() bool {
 
 // Check if a feature flag is partially enabled
 func (f FeatureFlag) isPartiallyEnabled() bool {
-	return !f.isEnabled() && (f.hasUsers() || f.hasGroups() || f.hasPercentage())
+	return !f.isEnabled() && (f.hasDomains() || f.hasGroups() || f.hasPercentage())
 }
 
 // Check if a group has access to a feature
@@ -59,18 +59,18 @@ func (f FeatureFlag) GroupHasAccess(group string) bool {
 	return f.isEnabled() || (f.isPartiallyEnabled() && f.groupInGroups(group))
 }
 
-// Check if a user has access to a feature
-func (f FeatureFlag) UserHasAccess(user uint32) bool {
-	// A user has access:
+// Check if a domain has access to a feature
+func (f FeatureFlag) DomainHasAccess(domain uint32) bool {
+	// A domain has access:
 	// - if the feature is enabled
 	// - if the feature is partially enabled and he has been given access explicity
 	// - if the feature is partially enabled and he is in the allowed percentage
-	return f.isEnabled() || (f.isPartiallyEnabled() && (f.userInUsers(user) || f.userIsAllowedByPercentage(user)))
+	return f.isEnabled() || (f.isPartiallyEnabled() && (f.domainInDomains(domain) || f.domainIsAllowedByPercentage(domain)))
 }
 
-// Tell if specific users have access to the feature
-func (f FeatureFlag) hasUsers() bool {
-	return len(f.Users) > 0
+// Tell if specific domains have access to the feature
+func (f FeatureFlag) hasDomains() bool {
+	return len(f.Domains) > 0
 }
 
 // Tell if specific groups have access to the feature
@@ -78,19 +78,19 @@ func (f FeatureFlag) hasGroups() bool {
 	return len(f.Groups) > 0
 }
 
-// Tell if a specific percentage of users has access to the feature
+// Tell if a specific percentage of domains has access to the feature
 func (f FeatureFlag) hasPercentage() bool {
 	return f.Percentage > 0
 }
 
-// Check if a user has access to the feature thanks to the percentage value
-func (f FeatureFlag) userIsAllowedByPercentage(user uint32) bool {
-	return crc32.ChecksumIEEE(Uint32ToBytes(user))%100 < f.Percentage
+// Check if a domain has access to the feature thanks to the percentage value
+func (f FeatureFlag) domainIsAllowedByPercentage(domain uint32) bool {
+	return crc32.ChecksumIEEE(Uint32ToBytes(domain))%100 < f.Percentage
 }
 
-// Check if a user is in the list of allowed users
-func (f FeatureFlag) userInUsers(user uint32) bool {
-	return IntInSlice(user, f.Users)
+// Check if a domain is in the list of allowed domains
+func (f FeatureFlag) domainInDomains(domain uint32) bool {
+	return IntInSlice(domain, f.Domains)
 }
 
 // Check if a group is in the list of allowed groups
