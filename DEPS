@@ -12,6 +12,10 @@ deps {
     version: HEAD
   }
   repo {
+    name: "seaweedfs-adaptor"
+    version: HEAD
+  }
+  repo {
     name: "third-party-go/vendor/github.com/golang/glog"
     version: HEAD
   }
