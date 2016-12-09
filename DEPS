@@ -32,7 +32,15 @@ deps {
     version: HEAD
   }
   repo {
+    name: "third-party-go/vendor/github.com/prometheus/client_model"
+    version: HEAD
+  }
+  repo {
     name: "third-party-go/vendor/github.com/samuel/go-zookeeper"
+    version: HEAD
+  }
+  repo {
+    name: "third-party-go/vendor/github.com/stretchr/testify"
     version: HEAD
   }
   repo {
