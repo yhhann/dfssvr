@@ -34,7 +34,7 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 
 	var wFile *weedfs.WeedFile
 	if isWriteToBackStore(info.Domain) {
-		wFile, err = weedfs.Create(info.Name, info.Domain, bsh.BackStoreShard.MasterUri, bsh.BackStoreShard.Replica, NegotiatedChunkSize)
+		wFile, err = weedfs.Create(info.Name, info.Domain, bsh.BackStoreShard.MasterUri, bsh.BackStoreShard.Replica, bsh.BackStoreShard.DataCenter, bsh.BackStoreShard.Rack, NegotiatedChunkSize)
 		if err != nil {
 			glog.Warningf("Failed to create file %v", err)
 			return NewBackStoreFile(nil, originalFile, info), nil

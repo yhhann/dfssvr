@@ -37,4 +37,6 @@ type Shard struct {
 	ShdType     ShardType     `bson:"shdType,omitempty"`     // shard type
 	MasterUri   string        `bson:"masterUri,omitempty"`   // master uri
 	Replica     string        `bson:"replica,omitempty"`     // replica
+	DataCenter  string        `bson:"dc,omitempty"`          // data center
+	Rack        string        `bson:"rack,omitempty"`        // rack
 }
