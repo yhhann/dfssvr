@@ -41,8 +41,7 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 		}
 
 		originalFile.updateFileMeta(map[string]interface{}{
-			"weedfid":    wFile.Fid,
-			"collection": wFile.Collection,
+			"weedfid": wFile.Fid,
 		})
 		instrument.BackstoreFileCounter <- &instrument.Measurements{
 			Name:  "created",
