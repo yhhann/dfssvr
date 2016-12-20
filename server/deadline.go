@@ -36,11 +36,17 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 
 	entry(serviceName)
 
+	ctx, cancel := context.WithCancel(getContext(env))
+
 	defer func() {
 		elapse := time.Since(startTime)
 		me := &instrument.Measurements{
 			Name:  serviceName,
 			Value: float64(elapse.Nanoseconds()),
+		}
+
+		if e != nil && cancel != nil {
+			cancel()
 		}
 
 		if se, ok := e.(transport.StreamError); ok && (se.Code == codes.DeadlineExceeded) || (e == context.DeadlineExceeded) {
@@ -57,7 +63,7 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 		exit(serviceName)
 	}()
 
-	if deadline, ok := getDeadline(env); ok {
+	if deadline, ok := ctx.Deadline(); ok {
 		timeout := deadline.Sub(startTime)
 
 		if timeout <= 0 {
@@ -70,12 +76,7 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 			r interface{}
 			e error
 		}
-		results := make(chan *Result)
-
-		ticker := time.NewTicker(timeout)
-		defer func() {
-			ticker.Stop()
-		}()
+		results := make(chan *Result, 1)
 
 		go func() {
 			result := &Result{}
@@ -90,8 +91,8 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 			r = result.r
 			e = result.e
 			return
-		case <-ticker.C:
-			e = context.DeadlineExceeded
+		case <-ctx.Done():
+			e = ctx.Err()
 			return
 		}
 	}
@@ -121,15 +122,20 @@ func streamBizFunc(stream interface{}, req interface{}, args []interface{}) (int
 	return nil, sFunc(req, stream, as)
 }
 
-func getDeadline(env interface{}) (deadline time.Time, ok bool) {
+func getDeadline(env interface{}) (time.Time, bool) {
+	return getContext(env).Deadline()
+}
+
+func getContext(env interface{}) (ctx context.Context) {
 	switch t := env.(type) {
 	case context.Context:
-		deadline, ok = t.Deadline()
+		ctx = t
 	case grpc.Stream:
-		deadline, ok = t.Context().Deadline()
+		ctx = t.Context()
 	default:
-		return
+		ctx = context.Background()
 	}
+
 	return
 }
 

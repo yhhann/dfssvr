@@ -3,6 +3,7 @@ package instrument
 import (
 	"flag"
 	"net/http"
+	_ "net/http/pprof"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -17,7 +18,7 @@ type Measurements struct {
 var (
 	metricsAddr    = flag.String("metrics-address", ":8080", "The address to listen on for metrics.")
 	metricsPath    = flag.String("metrics-path", "/dfs-metrics", "The path of metrics.")
-	metricsBufSize = flag.Int("metrics-buf-size", 100, "Size of metrics buffer")
+	metricsBufSize = flag.Int("metrics-buf-size", 100000, "Size of metrics buffer")
 )
 
 var (

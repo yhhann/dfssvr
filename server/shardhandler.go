@@ -109,9 +109,8 @@ func (sh *ShardHandler) startHealthyCheckRoutine() {
 				// Starts a routine to check server.
 				if fh != nil {
 					go func() {
-						status := statusOk
+						status := healthCheck(fh)
 						if !*HealthCheckManually {
-							status = healthCheck(fh)
 							sh.hs.updateHandlerStatus(fh, status)
 						}
 						glog.Infof("Health check, manually %t, handler %v is %s", *HealthCheckManually, fh.Name(), status.String())

@@ -36,11 +36,12 @@ type Register interface {
 
 // ZKDfsServerRegister implements the Register interface
 type ZKDfsServerRegister struct {
-	serverMap  map[string]*discovery.DfsServer
-	observers  map[chan<- struct{}]string
-	notice     notice.Notice
-	rwmu       sync.RWMutex
-	registered int32 // 1 for registered, 0 for not registered.
+	serverMap     map[string]*discovery.DfsServer
+	observers     map[chan<- struct{}]string
+	notice        notice.Notice
+	serversLock   sync.RWMutex
+	observersLock sync.RWMutex
+	registered    int32 // 1 for registered, 0 for not registered.
 }
 
 // Register registers a DfsServer.
@@ -74,6 +75,9 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 				// server detects a client is offline, the channel that client
 				// attached will be removed from r.observers.
 				go func() {
+					r.observersLock.RLock()
+					defer r.observersLock.RUnlock()
+
 					for ob := range r.observers {
 						ob <- struct{}{}
 					}
@@ -105,15 +109,15 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 
 // GetDfsServerMap returns the map of DfsServer, which be update in realtime.
 func (r *ZKDfsServerRegister) GetDfsServerMap() map[string]*discovery.DfsServer {
-	r.rwmu.RLock()
-	defer r.rwmu.RUnlock()
+	r.serversLock.RLock()
+	defer r.serversLock.RUnlock()
 
 	return r.serverMap
 }
 
 func (r *ZKDfsServerRegister) putDfsServerToMap(server *discovery.DfsServer) {
-	r.rwmu.Lock()
-	defer r.rwmu.Unlock()
+	r.serversLock.Lock()
+	defer r.serversLock.Unlock()
 
 	r.serverMap[server.Id] = server
 	glog.Infof("Succeeded to add server %s into server map", server.String())
@@ -121,8 +125,8 @@ func (r *ZKDfsServerRegister) putDfsServerToMap(server *discovery.DfsServer) {
 
 // CleanDfsServerMap cleans the map of DfsServer.
 func (r *ZKDfsServerRegister) cleanDfsServerMap() {
-	r.rwmu.Lock()
-	defer r.rwmu.Unlock()
+	r.serversLock.Lock()
+	defer r.serversLock.Unlock()
 
 	initialSize := len(r.serverMap)
 	r.serverMap = make(map[string]*discovery.DfsServer, initialSize)
@@ -132,12 +136,18 @@ func (r *ZKDfsServerRegister) cleanDfsServerMap() {
 
 // AddObserver adds an observer for DfsServer node changed.
 func (r *ZKDfsServerRegister) AddObserver(observer chan<- struct{}, name string) {
+	r.observersLock.Lock()
+	defer r.observersLock.Unlock()
+
 	observer <- struct{}{}
 	r.observers[observer] = name
 }
 
 // RemoveObserver removes an observer for DfsServer node changed.
 func (r *ZKDfsServerRegister) RemoveObserver(observer chan<- struct{}) {
+	r.observersLock.Lock()
+	defer r.observersLock.Unlock()
+
 	delete(r.observers, observer)
 	close(observer)
 }
