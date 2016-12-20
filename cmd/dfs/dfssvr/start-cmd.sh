@@ -1,29 +1,105 @@
-#!/bin/sh
+#! /bin/bash
 
-cd `dirname $0`
-## SERVER_ID is server id, unique.
-SERVER_ID="cd-dfssvr-50"
-LISTEN_ADDR=":10000"
-REGISTER_ADDR="192.168.1.50:10000"
-SHARD_URI="mongodb://192.168.1.57:27017"
-SHARD_DBNAME="shard"
-EVENT_DBNAME="eventdb"
-ZK_ADDR="192.168.1.57:2181"
-HEALTH_CHECK_INTERVAL=600
-HEALTH_CHECK_TIMEOUT=60
-LOG_DIR="`pwd`/log"
-METRICS_ADDR=":2020"
-METRICS_PATH="/dfs-metrics"
+###########################################################
+#
+# start-dfs-server.sh
+#
+# It is used to start DFS server.
+#
+###########################################################
 
-bin/dfssvr -server-name "$SERVER_ID" \
-    -listen-addr "$LISTEN_ADDR" -register-addr "$REGISTER_ADDR" \
-    -shard-dburi "$SHARD_URI" -shard-name "$SHARD_DBNAME" \
-    -event-dbname "$EVENT_DBNAME" \
-    -slog-dbname "$SHARD_DBNAME"
-    -zk-addr "$ZK_ADDR" \
-    -health-check-interval "$HEALTH_CHECK_INTERVAL" \
-    -health-check-timeout "$HEALTH_CHECK_TIMEOUT" \
-    -metrics-address "$METRICS_ADDR" \
-    -metrics-path "$METRICS_PATH" \
-    -gluster-log-dir "$LOG_DIR" \
-    -log_dir "$LOG_DIR" -v 2 -logtostderr=false &
+set -e
+
+DIR=$(cd `dirname $0`; pwd|awk -F'/bin' '{print $1}')
+chmod +x $DIR/bin/*
+
+if [ -z $SERVER_ID ]; then
+  echo "ERROR: DFS Server need SERVER_ID!"
+  exit -1
+fi
+
+if [ -z $REGISTER_ADDR ]; then
+  echo "ERROR: DFS Server need REGISTER_ADDR!"
+  exit -1
+fi
+
+if [ -z $LISTEN_ADDR ]; then
+  LISTEN_ADDR=":10000"
+fi
+
+if [ -z $ZK_ADDR ]; then
+  ZK_ADDR="192.168.0.49:2181,192.168.0.50:2181,192.168.0.55:2181"
+fi
+
+if [ -z $SHARD_URI ]; then
+  SHARD_URI="mongodb://192.168.0.42:27020,192.168.0.43:27020,192.168.0.47:27020/?maxpoolsize=4096&connecttimeoutms=150000"
+fi
+
+if [ -z $SHARD_DBNAME ]; then
+  SHARD_DBNAME=shard
+fi
+
+if [ -z $EVENT_DBNAME ]; then
+  EVENT_DBNAME=eventdb
+fi
+
+if [ -z $HEALTH_CHECK_INTERVAL ]; then
+  HEALTH_CHECK_INTERVAL=60
+fi
+
+if [ -z $HEALTH_CHECK_TIMEOUT ]; then
+  HEALTH_CHECK_TIMEOUT=10
+fi
+
+if [ -z $METRICS_ADDR ]; then
+  METRICS_ADDR=:2020
+fi
+
+if [ -z $METRICS_PATH ]; then
+  METRICS_PATH=/dfs-metrics
+fi
+
+if [ -z $LOG_DIR ]; then
+  LOG_DIR=$DIR/log
+fi
+
+if [ ! -e $LOG_DIR ]; then
+  mkdir -p $LOG_DIR
+fi
+
+if [ -z $LOG_LEVEL ]; then
+  LOG_LEVEL=2
+fi
+
+STDOUT_FILE=$LOG_DIR/dfsserver_`date +%F_%T`.txt
+
+set +e
+PIDS=`pgrep ^dfssvr$`
+if [ $? -eq 0 ]; then
+  echo "ERROR: DFS Server already started!"
+  echo "PID: $PIDS"
+  exit 1
+fi
+set -e
+
+nohup $DIR/bin/dfssvr -server-name=$SERVER_ID \
+  -listen-addr=$LISTEN_ADDR -register-addr=$REGISTER_ADDR \
+  -shard-dburi=$SHARD_URI -shard-name=$SHARD_DBNAME \
+  -event-dbname=$EVENT_DBNAME \
+  -slog-dbname=$SHARD_DBNAME \
+  -zk-addr=$ZK_ADDR \
+  -health-check-interval=$HEALTH_CHECK_INTERVAL \
+  -health-check-timeout=$HEALTH_CHECK_TIMEOUT \
+  -metrics-address=$METRICS_ADDR \
+  -metrics-path=$METRICS_PATH \
+  -gluster-log-dir=$LOG_DIR \
+  -log_dir=$LOG_DIR -v $LOG_LEVEL -logtostderr=false \
+  > $STDOUT_FILE 2>&1 &
+
+PIDS=`pgrep ^dfssvr$`
+if [ $? -ne 0 ]; then
+  echo "ERROR: The service DFS Server does not started!"
+  exit 1
+fi
+
+echo "Service DFS Server started."
