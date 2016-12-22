@@ -13,14 +13,17 @@ set -e
 DIR=$(cd `dirname $0`; pwd|awk -F'/bin' '{print $1}')
 chmod +x $DIR/bin/*
 
+outip=$(ifconfig em2 2>/dev/null| grep "inet addr" | awk {'print $2'} | awk -F':' {'print $2'})
+if [ -z $outip ];then
+   outip=$(ifconfig eth1 2>/dev/null | grep "inet addr" | awk {'print $2'} | awk -F':' {'print $2'})
+fi
+
 if [ -z $SERVER_ID ]; then
-  echo "ERROR: DFS Server need SERVER_ID!"
-  exit -1
+   SERVER_ID=$outip
 fi
 
 if [ -z $REGISTER_ADDR ]; then
-  echo "ERROR: DFS Server need REGISTER_ADDR!"
-  exit -1
+   REGISTER_ADDR="$outip":10000
 fi
 
 if [ -z $LISTEN_ADDR ]; then
