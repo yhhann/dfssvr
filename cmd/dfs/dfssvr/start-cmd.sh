@@ -46,6 +46,10 @@ if [ -z $EVENT_DBNAME ]; then
   EVENT_DBNAME=eventdb
 fi
 
+if [ -z $SHIELD_TIMEOUT]; then
+  SHIELD_TIMEOUT=60
+fi
+
 if [ -z $HEALTH_CHECK_INTERVAL ]; then
   HEALTH_CHECK_INTERVAL=60
 fi
@@ -96,6 +100,7 @@ nohup $DIR/bin/dfssvr -server-name=$SERVER_ID \
   -metrics-address=$METRICS_ADDR \
   -metrics-path=$METRICS_PATH \
   -gluster-log-dir=$LOG_DIR \
+  -shield-timeout=$SHIELD_TIMEOUT \
   -log_dir=$LOG_DIR -v $LOG_LEVEL -logtostderr=false \
   > $STDOUT_FILE 2>&1 &
 
