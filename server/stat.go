@@ -19,7 +19,20 @@ func (s *DFSServer) Stat(ctx context.Context, req *transfer.GetFileReq) (*transf
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := bizFunc(s.statBiz).withDeadline(serviceName, ctx, req)
+	var t interface{}
+	var err error
+
+	if *shieldEnabled {
+		bf := func(c interface{}, r interface{}, args []interface{}) (interface{}, error) {
+			key := fmt.Sprintf("%s", req.Id)
+			return shield(serviceName, key, *shieldTimeout, bizFunc(s.statBiz), c, r, args)
+		}
+
+		t, err = bizFunc(bf).withDeadline(serviceName, ctx, req)
+	} else {
+		t, err = bizFunc(s.statBiz).withDeadline(serviceName, ctx, req)
+	}
+
 	if err != nil {
 		return nil, err
 	}

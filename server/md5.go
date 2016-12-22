@@ -22,7 +22,20 @@ func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*t
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := bizFunc(s.getByMd5Biz).withDeadline(serviceName, ctx, req, peerAddr)
+	var t interface{}
+	var err error
+
+	if *shieldEnabled {
+		bf := func(c interface{}, r interface{}, args []interface{}) (interface{}, error) {
+			key := fmt.Sprintf("%s-%d", req.Md5, req.Domain)
+			return shield(serviceName, key, *shieldTimeout, bizFunc(s.getByMd5Biz), c, r, args)
+		}
+
+		t, err = bizFunc(bf).withDeadline(serviceName, ctx, req, peerAddr)
+	} else {
+		t, err = bizFunc(s.getByMd5Biz).withDeadline(serviceName, ctx, req, peerAddr)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +112,20 @@ func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (
 		return nil, fmt.Errorf("invalid request [%v]", req)
 	}
 
-	t, err := bizFunc(s.existByMd5Biz).withDeadline(serviceName, ctx, req)
+	var t interface{}
+	var err error
+
+	if *shieldEnabled {
+		bf := func(c interface{}, r interface{}, args []interface{}) (interface{}, error) {
+			key := fmt.Sprintf("%s-%d", req.Md5, req.Domain)
+			return shield(serviceName, key, *shieldTimeout, bizFunc(s.existByMd5Biz), c, r, args)
+		}
+
+		t, err = bizFunc(bf).withDeadline(serviceName, ctx, req, peerAddr)
+	} else {
+		t, err = bizFunc(s.existByMd5Biz).withDeadline(serviceName, ctx, req, peerAddr)
+	}
+
 	if err != nil {
 		return nil, err
 	}

@@ -28,7 +28,18 @@ func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (result *
 	}
 
 	var t interface{}
-	t, err = bizFunc(s.existBiz).withDeadline(serviceName, ctx, req)
+
+	if *shieldEnabled {
+		bf := func(c interface{}, r interface{}, args []interface{}) (interface{}, error) {
+			key := fmt.Sprintf("%s", req.Id)
+			return shield(serviceName, key, *shieldTimeout, bizFunc(s.existBiz), c, r, args)
+		}
+
+		t, err = bizFunc(bf).withDeadline(serviceName, ctx, req)
+	} else {
+		t, err = bizFunc(s.existBiz).withDeadline(serviceName, ctx, req)
+	}
+
 	if err != nil {
 		return nil, err
 	}

@@ -16,7 +16,7 @@ type Measurements struct {
 }
 
 var (
-	metricsAddr    = flag.String("metrics-address", ":8080", "The address to listen on for metrics.")
+	metricsAddr    = flag.String("metrics-address", ":2020", "The address to listen on for metrics.")
 	metricsPath    = flag.String("metrics-path", "/dfs-metrics", "The path of metrics.")
 	metricsBufSize = flag.Int("metrics-buf-size", 100000, "Size of metrics buffer")
 )
@@ -208,6 +208,18 @@ var (
 		[]string{"service"},
 	)
 	BackstoreFileCounter = make(chan *Measurements, *metricsBufSize)
+
+	mergedQuery = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "merged_query",
+			Help:      "merged query.",
+			Buckets:   []float64{1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0},
+		},
+		[]string{"service"},
+	)
+	MergedQuery = make(chan *Measurements, *metricsBufSize)
 )
 
 func init() {
@@ -227,6 +239,7 @@ func init() {
 	prometheus.MustRegister(prejudgeExceedCounter)
 	prometheus.MustRegister(flagGauge)
 	prometheus.MustRegister(backstoreFileCounter)
+	prometheus.MustRegister(mergedQuery)
 }
 
 func StartMetrics() {
@@ -272,6 +285,8 @@ func StartMetrics() {
 					flagGauge.WithLabelValues(m.Name).Set(m.Value)
 				case m := <-BackstoreFileCounter:
 					backstoreFileCounter.WithLabelValues(m.Name).Inc()
+				case m := <-MergedQuery:
+					mergedQuery.WithLabelValues(m.Name).Observe(m.Value)
 				}
 			}
 		}()
