@@ -47,7 +47,7 @@ if [ -z $EVENT_DBNAME ]; then
 fi
 
 if [ -z $SHIELD_TIMEOUT]; then
-  SHIELD_TIMEOUT=60
+  SHIELD_TIMEOUT=60s
 fi
 
 if [ -z $HEALTH_CHECK_INTERVAL ]; then
