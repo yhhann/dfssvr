@@ -57,7 +57,7 @@ type SpaceLogOp struct {
 }
 
 func (op *SpaceLogOp) execute(target func(*mgo.Session) error) error {
-	s, err := CloneSession(op.uri)
+	s, err := CopySession(op.uri)
 	if err != nil {
 		return err
 	}

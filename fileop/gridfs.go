@@ -36,6 +36,13 @@ func (h *GridFsHandler) releaseSession(session *mgo.Session, err error) {
 	}
 }
 
+// ensureReleaseSession releases a session.
+func (h *GridFsHandler) ensureReleaseSession(session *mgo.Session) {
+	if session != nil {
+		metadata.ReleaseSession(session)
+	}
+}
+
 // Name returns handler's name.
 func (h *GridFsHandler) Name() string {
 	return h.Shard.Name
@@ -132,7 +139,12 @@ func (h *GridFsHandler) Duplicate(oid string) (string, error) {
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
 func (h *GridFsHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileInfo, error) {
-	gridFile, err := h.duplfs.Find(h.gridfs, id)
+	session, gridfs := h.copySessionAndGridFS()
+	defer func() {
+		h.ensureReleaseSession(session)
+	}()
+
+	gridFile, err := h.duplfs.Find(gridfs, id)
 	if err == mgo.ErrNotFound {
 		return "", nil, nil, nil
 	}
@@ -167,7 +179,12 @@ func (h *GridFsHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileInf
 
 // Remove deletes a file with its id and domain.
 func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
-	result, entityId, err := h.duplfs.LazyDelete(h.gridfs, id)
+	session, gridfs := h.copySessionAndGridFS()
+	defer func() {
+		h.ensureReleaseSession(session)
+	}()
+
+	result, entityId, err := h.duplfs.LazyDelete(gridfs, id)
 	if err != nil {
 		glog.Warningf("Failed to remove file %s %d, error: %s", id, domain, err)
 		return false, nil, err
@@ -178,11 +195,11 @@ func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error)
 		query := bson.D{
 			{"_id", *entityId},
 		}
-		m, err = LookupFileMeta(h.gridfs, query)
+		m, err = LookupFileMeta(gridfs, query)
 		if err != nil {
 			return false, nil, err
 		}
-		removeEntity(h.gridfs, *entityId)
+		removeEntity(gridfs, *entityId)
 	}
 
 	return result, m, nil

@@ -26,7 +26,7 @@ type MongoMetaOp struct {
 }
 
 func (op *MongoMetaOp) execute(target func(session *mgo.Session) error) error {
-	s, err := CloneSession(op.uri)
+	s, err := CopySession(op.uri)
 	if err != nil {
 		return err
 	}

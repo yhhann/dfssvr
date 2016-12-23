@@ -38,7 +38,7 @@ type DuplicateOp struct {
 }
 
 func (d *DuplicateOp) execute(target func(session *mgo.Session) error) error {
-	s, err := CloneSession(d.uri)
+	s, err := CopySession(d.uri)
 	if err != nil {
 		return err
 	}

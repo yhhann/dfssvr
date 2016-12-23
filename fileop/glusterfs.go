@@ -96,6 +96,13 @@ func (h *GlusterHandler) releaseSession(session *mgo.Session, err error) {
 	}
 }
 
+// ensureReleaseSession releases a session.
+func (h *GlusterHandler) ensureReleaseSession(session *mgo.Session) {
+	if session != nil {
+		metadata.ReleaseSession(session)
+	}
+}
+
 // Create creates a DFSFile for write.
 func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
@@ -217,7 +224,12 @@ func (h *GlusterHandler) Duplicate(oid string) (string, error) {
 // If the file exists, return its file id.
 // If the file exists and is a duplication, return its primitive file id.
 func (h *GlusterHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileInfo, error) {
-	gridFile, err := h.duplfs.Find(h.gridfs, id)
+	session, gridfs := h.copySessionAndGridFS()
+	defer func() {
+		h.ensureReleaseSession(session)
+	}()
+
+	gridFile, err := h.duplfs.Find(gridfs, id)
 	if err == mgo.ErrNotFound {
 		return "", nil, nil, nil
 	}
@@ -252,7 +264,12 @@ func (h *GlusterHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileIn
 
 // Remove deletes file by its id and domain.
 func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
-	result, entityId, err := h.duplfs.LazyDelete(h.gridfs, id)
+	session, gridfs := h.copySessionAndGridFS()
+	defer func() {
+		h.ensureReleaseSession(session)
+	}()
+
+	result, entityId, err := h.duplfs.LazyDelete(gridfs, id)
 	if err != nil {
 		glog.Warningf("Failed to remove file %s %d, error: %s", id, domain, err)
 		return false, nil, err
@@ -263,11 +280,11 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, *FileMeta, error
 		query := bson.D{
 			{"_id", *entityId},
 		}
-		m, err = LookupFileMeta(h.gridfs, query)
+		m, err = LookupFileMeta(gridfs, query)
 		if err != nil {
 			return false, nil, err
 		}
-		removeEntity(h.gridfs, *entityId)
+		removeEntity(gridfs, *entityId)
 
 		filePath := util.GetFilePath(h.VolBase, domain, (*entityId).Hex(), h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {

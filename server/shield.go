@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	shieldTimeout = flag.Duration("shield-timeout", 3*time.Second, "shield timeout duration.")
-	shieldEnabled = flag.Bool("shield-enabled", true, "enable shield")
+	shieldTimeout = flag.Duration("shield-timeout", 60*time.Second, "shield timeout duration.")
+	shieldEnabled = flag.Bool("shield-enabled", false, "enable shield")
 
 	tasks    map[string][]chan BizFuncResult
 	mapLock  sync.Mutex
@@ -92,6 +92,7 @@ func shield(serviceName string, key string, timeout time.Duration, f bizFunc, pa
 
 	first := put(key, task)
 	if first {
+		start := time.Now()
 		rslt := BizFuncResult{}
 		rslt.r, rslt.e = f(paras[0], paras[1], paras[2:])
 
@@ -106,7 +107,7 @@ func shield(serviceName string, key string, timeout time.Duration, f bizFunc, pa
 				Name:  serviceName,
 				Value: float64(cnt),
 			}
-			glog.V(2).Infof("Succeeded to merge req: %d, %s, %s", cnt, serviceName, key)
+			glog.V(2).Infof("Succeeded to merge req: %d, %s, %s, elapse %v", cnt, serviceName, key, time.Since(start))
 		}
 	}
 
