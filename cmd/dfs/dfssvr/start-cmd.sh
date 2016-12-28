@@ -13,9 +13,9 @@ set -e
 DIR=$(cd `dirname $0`; pwd|awk -F'/bin' '{print $1}')
 chmod +x $DIR/bin/*
 
-outip=$(ifconfig em2 2>/dev/null| grep "inet addr" | awk {'print $2'} | awk -F':' {'print $2'})
+outip=$(/sbin/ifconfig em2 2>/dev/null| grep "inet addr" | awk {'print $2'} | awk -F':' {'print $2'})
 if [ -z $outip ];then
-   outip=$(ifconfig eth1 2>/dev/null | grep "inet addr" | awk {'print $2'} | awk -F':' {'print $2'})
+   outip=$(/sbin/ifconfig eth1 2>/dev/null | grep "inet addr" | awk {'print $2'} | awk -F':' {'print $2'})
 fi
 
 if [ -z $SERVER_ID ]; then
