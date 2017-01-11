@@ -57,8 +57,10 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 			if e != fileop.FileNotFound {
 				instrument.FailedCounter <- me
 				glog.Infof("%s error %v, in %v seconds.", serviceName, e, elapse.Seconds())
+			} else {
+				instrument.SuccessDuration <- me
+				glog.Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
 			}
-			// 'file not found' ignored.
 		} else {
 			instrument.SuccessDuration <- me
 			glog.Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
