@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/golang/glog"
@@ -87,6 +89,10 @@ func main() {
 	go flushLogDaemon()
 	defer glog.Flush()
 
+	term := make(chan os.Signal, 1)
+	retire := make(chan bool, 1)
+	signal.Notify(term, syscall.SIGTERM, syscall.SIGINT)
+
 	instrument.StartMetrics()
 
 	lis, err := net.Listen("tcp", *lsnAddr)
@@ -127,13 +133,24 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer(sopts...)
-	defer grpcServer.Stop()
-
 	transfer.RegisterFileTransferServer(grpcServer, dfsServer)
 	discovery.RegisterDiscoveryServiceServer(grpcServer, dfsServer)
 
 	glog.Flush()
+
+	go func() {
+		select {
+		case <-term:
+			glog.Infoln("Start to shutdown DFS server...")
+			grpcServer.GracefulStop()
+			glog.Infoln("DFS server stopped gracefully.")
+			retire <- true
+		}
+	}()
+
 	grpcServer.Serve(lis)
+
+	<-retire
 }
 
 func flushLogDaemon() {

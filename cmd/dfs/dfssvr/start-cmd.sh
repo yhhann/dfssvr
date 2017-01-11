@@ -67,7 +67,7 @@ if [ -z $METRICS_PATH ]; then
 fi
 
 if [ -z $LOG_DIR ]; then
-  LOG_DIR=$DIR/log
+  LOG_DIR=$DIR/logs
 fi
 
 if [ ! -e $LOG_DIR ]; then
