@@ -17,7 +17,7 @@ import (
 func (s *DFSServer) Copy(ctx context.Context, req *transfer.CopyReq) (*transfer.CopyRep, error) {
 	serviceName := "Copy"
 	peerAddr := getPeerAddressString(ctx)
-	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.V(3).Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.SrcFid) == 0 || req.SrcDomain <= 0 || req.DstDomain <= 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)
@@ -52,7 +52,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 			return nil, err
 		}
 
-		glog.Infof("Copy is converted to duplicate, srcId: %s, srcDomain: %d, dstDomain: %d",
+		glog.V(3).Infof("Copy is converted to duplicate, srcId: %s, srcDomain: %d, dstDomain: %d",
 			req.SrcFid, req.SrcDomain, req.DstDomain)
 
 		return &transfer.CopyRep{
@@ -93,7 +93,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 	}
 
 	inf := wf.GetFileInfo()
-	glog.Infof("Succeeded to copy file %s to %s", req.SrcFid, inf.Id)
+	glog.V(3).Infof("Succeeded to copy file %s to %s", req.SrcFid, inf.Id)
 
 	// space log.
 	slog := &metadata.SpaceLog{

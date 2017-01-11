@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/transport"
 
+	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/instrument"
 )
 
@@ -51,13 +52,16 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 
 		if se, ok := e.(transport.StreamError); ok && (se.Code == codes.DeadlineExceeded) || (e == context.DeadlineExceeded) {
 			instrument.TimeoutHistogram <- me
-			glog.V(2).Infof("%s, deadline exceeded, %v seconds.", serviceName, elapse.Seconds())
+			glog.Infof("%s, deadline exceeded, in %v seconds.", serviceName, elapse.Seconds())
 		} else if e != nil {
-			instrument.FailedCounter <- me
-			glog.V(2).Infof("%s error %v, in %v seconds.", serviceName, e, elapse.Seconds())
+			if e != fileop.FileNotFound {
+				instrument.FailedCounter <- me
+				glog.Infof("%s error %v, in %v seconds.", serviceName, e, elapse.Seconds())
+			}
+			// 'file not found' ignored.
 		} else {
 			instrument.SuccessDuration <- me
-			glog.V(2).Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
+			glog.Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
 		}
 
 		exit(serviceName)
@@ -67,7 +71,7 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 		timeout := deadline.Sub(startTime)
 
 		if timeout <= 0 {
-			glog.Infof("%s timeout is %v, deadline is %v", serviceName, timeout, deadline)
+			glog.V(3).Infof("%s timeout is %v, deadline is %v", serviceName, timeout, deadline)
 			e = context.DeadlineExceeded
 			return
 		}

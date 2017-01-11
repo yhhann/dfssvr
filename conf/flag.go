@@ -82,7 +82,7 @@ func updateFeature(key string, value string) {
 		return
 	}
 
-	glog.V(3).Infof("Succeeded to update feature: %v", ff)
+	glog.Infof("Succeeded to update feature: %v", ff)
 	return
 }
 
@@ -103,11 +103,11 @@ func updatePrivate(key string, value string) {
 func UpdateFlagValue(key string, value string) {
 	if f, ok := flagMap[key]; ok {
 		f.Value.Set(value)
-		glog.Infof("update flag %s to %s", key, value)
+		glog.Infof("Succeeded to update flag %s to value %s", key, value)
 		return
 	}
 
-	glog.Infof("Failed to update %s to value %, invalid parameter name.", key, value)
+	glog.Warningf("Failed to update flag %s to value %, invalid parameter.", key, value)
 }
 
 // GetAllFlags returns a string which describes all flags and their values.

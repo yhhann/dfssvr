@@ -19,7 +19,7 @@ func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (result *
 		if err != nil {
 			glog.Warningf("%s, client: %s, %v, error %v", serviceName, peerAddr, req, err)
 		} else {
-			glog.Infof("%s, client: %s, %v, result %t", serviceName, peerAddr, req, result.Result)
+			glog.V(3).Infof("%s, client: %s, %v, result %t", serviceName, peerAddr, req, result.Result)
 		}
 	}()
 

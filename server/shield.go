@@ -107,7 +107,7 @@ func shield(serviceName string, key string, timeout time.Duration, f bizFunc, pa
 				Name:  serviceName,
 				Value: float64(cnt),
 			}
-			glog.V(2).Infof("Succeeded to merge req: %d, %s, %s, elapse %v", cnt, serviceName, key, time.Since(start))
+			glog.V(3).Infof("Succeeded to merge req: %d, %s, %s, elapse %v", cnt, serviceName, key, time.Since(start))
 		}
 	}
 

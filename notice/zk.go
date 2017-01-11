@@ -92,7 +92,7 @@ func (k *DfsZK) CheckChildren(path string) (<-chan []string, <-chan error) {
 				errors <- evt.Err
 				return
 			}
-			glog.V(2).Infof("event type: %v", evt.Type)
+			glog.V(4).Infof("zk event %+v.", evt)
 		}
 	}()
 

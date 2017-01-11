@@ -16,7 +16,7 @@ import (
 func (s *DFSServer) GetByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.GetByMd5Rep, error) {
 	serviceName := "GetByMd5"
 	peerAddr := getPeerAddressString(ctx)
-	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.V(3).Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Md5) == 0 || req.Domain <= 0 || req.Size < 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)
@@ -94,7 +94,7 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 		glog.Warningf("%s, error: %v", event.String(), er)
 	}
 
-	glog.Infof("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
+	glog.V(3).Infof("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
 		oid, req.Md5, req.Domain, req.Size)
 
 	return &transfer.GetByMd5Rep{
@@ -106,7 +106,7 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 func (s *DFSServer) ExistByMd5(ctx context.Context, req *transfer.GetByMd5Req) (*transfer.ExistRep, error) {
 	serviceName := "ExistByMd5"
 	peerAddr := getPeerAddressString(ctx)
-	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.V(3).Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Md5) == 0 || req.Domain <= 0 || req.Size < 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)

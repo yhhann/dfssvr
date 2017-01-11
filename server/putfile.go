@@ -75,7 +75,7 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 
 		if file == nil {
 			reqInfo = req.GetInfo()
-			glog.Infof("%s start, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
+			glog.V(3).Infof("%s start, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
 			if reqInfo == nil {
 				glog.Warningf("PutFile error, no file info")
 				return errors.New("PutFile error: no file info")
@@ -112,7 +112,7 @@ func (s *DFSServer) finishPutFile(file fileop.DFSFile, handler *fileop.DFSFileHa
 			}
 			return
 		}
-		glog.Infof("PutFile, succeeded to finish file: %s, elapse %d, rate %d kbit/s\n", inf, nsecs, rate)
+		glog.V(3).Infof("PutFile, succeeded to finish file: %s, elapse %d, rate %d kbit/s\n", inf, nsecs, rate)
 	}()
 
 	// save a event for create file ok.

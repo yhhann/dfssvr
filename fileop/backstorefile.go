@@ -194,7 +194,7 @@ func (d *BackStoreFile) Write(p []byte) (n int, err error) {
 func (d *BackStoreFile) Read(p []byte) (n int, err error) {
 	if d.bs != nil {
 		n, err = d.bs.Read(p)
-		if glog.V(5) {
+		if glog.V(4) {
 			glog.Infof("read from weed %d, %v", n, err)
 		}
 		return

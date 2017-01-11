@@ -71,14 +71,14 @@ func (sh *ShardHandler) updateStatus(newStatus handlerStatus) {
 func (sh *ShardHandler) startRecoveryRoutine() {
 	if atomic.CompareAndSwapInt32(&sh.recoveryRunning, 0 /*old value*/, 1 /*new value*/) {
 		go sh.Recovery()
-		glog.Infof("Succeeded to start recovery routine for %s", sh.handler.Name())
+		glog.V(3).Infof("Succeeded to start recovery routine for %s", sh.handler.Name())
 	}
 }
 
 func (sh *ShardHandler) stopRecoveryRoutine() {
 	if atomic.CompareAndSwapInt32(&sh.recoveryRunning, 1 /* old value*/, 0 /* new value*/) {
 		close(sh.recoveryChan)
-		glog.Infof("Succeeded to stop recovery routine for %s", sh.handler.Name())
+		glog.V(3).Infof("Succeeded to stop recovery routine for %s", sh.handler.Name())
 	}
 }
 
@@ -113,17 +113,17 @@ func (sh *ShardHandler) startHealthyCheckRoutine() {
 						if !*HealthCheckManually {
 							sh.hs.updateHandlerStatus(fh, status)
 						}
-						glog.Infof("Health check, manually %t, handler %v is %s", *HealthCheckManually, fh.Name(), status.String())
+						glog.V(4).Infof("Health check, manually %t, handler %v is %s", *HealthCheckManually, fh.Name(), status.String())
 					}()
 				}
 			case <-sh.healthyCheckRoutineRunning: // stop signal
-				glog.Infof("Succeeded to stop healty check routine for %v", sh.handler.Name())
+				glog.V(3).Infof("Succeeded to stop healty check routine for %v", sh.handler.Name())
 				return
 			}
 		}
 	}()
 
-	glog.Infof("Succeeded to start healthy check routine for %v, time interval %d seconds.",
+	glog.V(3).Infof("Succeeded to start healthy check routine for %v, time interval %d seconds.",
 		sh.handler.Name(), *HealthCheckInterval)
 }
 

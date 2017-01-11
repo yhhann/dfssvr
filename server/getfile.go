@@ -18,7 +18,7 @@ import (
 func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransfer_GetFileServer) (err error) {
 	serviceName := "GetFile"
 	peerAddr := getPeerAddressString(stream.Context())
-	glog.Infof("%s start, client: %s, %v", serviceName, peerAddr, req)
+	glog.V(3).Infof("%s start, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Id) == 0 || req.Domain <= 0 {
 		return fmt.Errorf("invalid request [%v]", req)
@@ -111,7 +111,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			rate := off * 8 * 1e6 / nsecs // in kbit/s
 
 			instrumentGetFile(off, rate, serviceName, file.GetFileInfo().Biz)
-			glog.Infof("GetFile ok, %s, length %d, elapse %d, rate %d kbit/s", req, off, nsecs, rate)
+			glog.V(3).Infof("GetFile ok, %s, length %d, elapse %d, rate %d kbit/s", req, off, nsecs, rate)
 
 			return nil
 		}

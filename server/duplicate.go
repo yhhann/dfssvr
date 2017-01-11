@@ -16,7 +16,7 @@ import (
 func (s *DFSServer) Duplicate(ctx context.Context, req *transfer.DuplicateReq) (*transfer.DuplicateRep, error) {
 	serviceName := "Duplicate"
 	peerAddr := getPeerAddressString(ctx)
-	glog.Infof("%s, client: %s, %v", serviceName, peerAddr, req)
+	glog.V(3).Infof("%s, client: %s, %v", serviceName, peerAddr, req)
 
 	if len(req.Id) == 0 || req.Domain <= 0 {
 		return nil, fmt.Errorf("invalid request [%v]", req)

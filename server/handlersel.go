@@ -511,7 +511,11 @@ func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
 
 	select {
 	case result := <-running:
-		return NewHandlerStatus(result)
+		status := NewHandlerStatus(result)
+		if status != statusOk {
+			glog.Warningf("check handler %v %s", handler.Name(), status.String())
+		}
+		return status
 	case <-ticker.C:
 		glog.Warningf("check handler %v expired", handler.Name())
 		return statusFailure

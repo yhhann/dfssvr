@@ -46,7 +46,7 @@ func (conf *Conf) startConfUpdateRoutine() {
 									kvs <- filepath.Join(strings.TrimPrefix(cn, conf.prefix), string(v))
 								case e := <-ec:
 									if e == zk.ErrNoNode {
-										glog.Infof("%v, %s, watcher routine closed", e, cn)
+										glog.V(3).Infof("%v, %s, watcher routine stopped.", e, cn)
 										delete(routineMap, p)
 										return
 									}
@@ -56,7 +56,7 @@ func (conf *Conf) startConfUpdateRoutine() {
 						}(confName, path, vChan, eChan)
 
 						routineMap[path] = struct{}{}
-						glog.Infof("Start a routine for %s", confName)
+						glog.V(3).Infof("Start a routine for %s.", confName)
 					}
 				}
 			case err := <-errs:

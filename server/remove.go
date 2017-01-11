@@ -138,9 +138,9 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	// TODO(hanyh): monitor remove.
 
 	if result {
-		glog.Infof("RemoveFile, succeeded to remove entity %s from %v, err %v.", req.Id, p.Name(), err)
+		glog.V(2).Infof("RemoveFile, succeeded to remove entity %s from %v, err %v.", req.Id, p.Name(), err)
 	} else {
-		glog.Infof("RemoveFile, succeeded to remove reference %s from %v, err %v.", req.Id, p.Name(), err)
+		glog.V(2).Infof("RemoveFile, succeeded to remove reference %s from %v, err %v.", req.Id, p.Name(), err)
 	}
 
 	rep.Result = result

@@ -257,7 +257,7 @@ func (h *GlusterHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileIn
 		// TODO(hanyh): add Domain and User
 	}
 
-	glog.Infof("Succeeded to find file %s, return %s", id, oid.Hex())
+	glog.V(3).Infof("Succeeded to find file %s, return %s", id, oid.Hex())
 
 	return oid.Hex(), meta, info, nil
 }
