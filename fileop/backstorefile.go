@@ -1,6 +1,7 @@
 package fileop
 
 import (
+	"flag"
 	"strings"
 
 	"github.com/golang/glog"
@@ -13,6 +14,8 @@ import (
 )
 
 var (
+	bsWithRealName = flag.Bool("bs-with-real-name", false, "create backstore file with the real name.")
+
 	NegotiatedChunkSize = int64(1048576)
 )
 
@@ -34,8 +37,17 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 
 	var wFile *weedfs.WeedFile
 	if isWriteToBackStore(info.Domain) {
-		wFile, err = weedfs.Create(info.Name, info.Domain, bsh.BackStoreShard.MasterUri, bsh.BackStoreShard.Replica, bsh.BackStoreShard.DataCenter, bsh.BackStoreShard.Rack, NegotiatedChunkSize)
+		fn := ""
+		if *bsWithRealName {
+			fn = info.Name
+			glog.V(5).Infof("Create backstore file with real name %s.", fn)
+		}
+		wFile, err = weedfs.Create(fn, info.Domain, bsh.BackStoreShard.MasterUri, bsh.BackStoreShard.Replica, bsh.BackStoreShard.DataCenter, bsh.BackStoreShard.Rack, NegotiatedChunkSize)
 		if err != nil {
+			instrument.BackstoreFileCounter <- &instrument.Measurements{
+				Name:  "create_failed",
+				Value: 1.0,
+			}
 			glog.Warningf("Failed to create file %v", err)
 			return NewBackStoreFile(nil, originalFile, info), nil
 		}
@@ -47,7 +59,7 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 			Name:  "created",
 			Value: 1.0,
 		}
-		glog.V(3).Infof("Succeeded to create backstore file for writing: %s, %s", wFile.Fid, info.Name)
+		glog.V(3).Infof("Succeeded to create backstore file: %s, %s", wFile.Fid, info.Name)
 	}
 
 	return NewBackStoreFile(wFile, originalFile, info), nil
@@ -60,14 +72,26 @@ func (bsh *BackStoreHandler) Open(id string, domain int64) (DFSFile, error) {
 		return nil, err
 	}
 
+	glog.V(5).Infof("Read from bs %t, meta %+v", isReadFromBackStore(domain), meta)
+
 	var wFile *weedfs.WeedFile
 	readFromOrig := true
 	if isReadFromBackStore(domain) && meta != nil && len(meta.Fid) > 0 {
 		readFromOrig = false
 		wFile, err = weedfs.Open(meta.Fid, domain, bsh.BackStoreShard.MasterUri)
 		if err != nil {
-			glog.Warningf("Failed to open file %v", err)
+			instrument.BackstoreFileCounter <- &instrument.Measurements{
+				Name:  "opene_failed",
+				Value: 1.0,
+			}
+			glog.Warningf("Failed to open backstore file %v", err)
 			readFromOrig = true
+		} else {
+			instrument.BackstoreFileCounter <- &instrument.Measurements{
+				Name:  "opened",
+				Value: 1.0,
+			}
+			glog.V(3).Infof("Succeeded to open backstore file: %s, %s", id, wFile.Fid)
 		}
 	}
 
@@ -76,15 +100,10 @@ func (bsh *BackStoreHandler) Open(id string, domain int64) (DFSFile, error) {
 		if err != nil {
 			return nil, err
 		}
-		glog.V(3).Infof("Succeeded to create original file for read: %s", id)
+		glog.V(3).Infof("Succeeded to open original file: %s", id)
 		return NewBackStoreFile(nil, originalFile, info), nil
 	}
 
-	instrument.BackstoreFileCounter <- &instrument.Measurements{
-		Name:  "opened",
-		Value: 1.0,
-	}
-	glog.V(3).Infof("Succeeded to create backstore file for read: %s, %s", wFile.Fid, id)
 	return NewBackStoreFile(wFile, nil, info), nil
 }
 
