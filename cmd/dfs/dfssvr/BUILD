@@ -11,6 +11,7 @@ go_binary(
     "//dfs/proto/discovery:go_default_library",
     "//dfs/proto/transfer:go_default_library",
     "//dfs/server:go_default_library",
+    "//letsgo/grpc:go_default_library",
     "//third-party-go/vendor/github.com/golang/glog:go_default_library",
     "//third-party-go/vendor/google.golang.org/grpc:go_default_library",
   ],

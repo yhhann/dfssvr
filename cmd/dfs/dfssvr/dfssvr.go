@@ -16,6 +16,7 @@ import (
 	"jingoal.com/dfs/proto/discovery"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/server"
+	jgrpc "jingoal.com/letsgo/grpc"
 )
 
 var (
@@ -131,6 +132,9 @@ func main() {
 		sopts = append(sopts, grpc.RPCCompressor(grpc.NewGZIPCompressor()))
 		sopts = append(sopts, grpc.RPCDecompressor(grpc.NewGZIPDecompressor()))
 	}
+
+	sopts = append(sopts, grpc.UnaryInterceptor(jgrpc.UnaryRecoverServerInterceptor))
+	sopts = append(sopts, grpc.StreamInterceptor(jgrpc.StreamRecoverServerInterceptor))
 
 	grpcServer := grpc.NewServer(sopts...)
 	transfer.RegisterFileTransferServer(grpcServer, dfsServer)

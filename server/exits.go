@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/golang/glog"
-
 	"golang.org/x/net/context"
 
 	"jingoal.com/dfs/fileop"
