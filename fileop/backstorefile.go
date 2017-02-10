@@ -53,7 +53,8 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 		}
 
 		originalFile.updateFileMeta(map[string]interface{}{
-			"weedfid": wFile.Fid,
+			"weedfid":   wFile.Fid,
+			"chunksize": wFile.GetChunkSize(),
 		})
 		instrument.BackstoreFileCounter <- &instrument.Measurements{
 			Name:  "created",
@@ -87,6 +88,9 @@ func (bsh *BackStoreHandler) Open(id string, domain int64) (DFSFile, error) {
 			glog.Warningf("Failed to open backstore file %v", err)
 			readFromOrig = true
 		} else {
+			if meta.ChunkSize > 0 {
+				wFile.SetChunkSize(meta.ChunkSize)
+			}
 			instrument.BackstoreFileCounter <- &instrument.Measurements{
 				Name:  "opened",
 				Value: 1.0,

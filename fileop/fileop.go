@@ -24,9 +24,9 @@ const (
 )
 
 type DFSFileMeta struct {
-	Bizname    string `bson:"bizname"`
-	Fid        string `bson:"weedfid"`
-	Collection string `bson:"collection"`
+	Bizname   string `bson:"bizname"`
+	Fid       string `bson:"weedfid"`
+	ChunkSize int64  `bson:"chunksize"`
 }
 
 // DFSFile represents a file of the underlying storage.
