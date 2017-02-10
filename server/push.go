@@ -13,6 +13,7 @@ import (
 func (s *DFSServer) GetDfsServers(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
 	clientId := strings.Join([]string{req.GetClient().Id, getPeerAddressString(stream.Context())}, "/")
 
+	removeObserver := true
 	observer := make(chan struct{}, 100)
 	s.register.AddObserver(observer, clientId)
 
@@ -22,7 +23,11 @@ func (s *DFSServer) GetDfsServers(req *discovery.GetDfsServersReq, stream discov
 outLoop:
 	for {
 		select {
-		case <-observer:
+		case _, ok := <-observer:
+			if !ok {
+				removeObserver = false
+				break outLoop
+			}
 			if err := s.sendDfsServerMap(req, stream); err != nil {
 				break outLoop
 			}
@@ -35,7 +40,9 @@ outLoop:
 	}
 
 	ticker.Stop()
-	s.register.RemoveObserver(observer)
+	if removeObserver {
+		s.register.RemoveObserver(observer)
+	}
 	glog.Infof("Client connection closed, client: %s", clientId)
 
 	return nil

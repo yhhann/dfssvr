@@ -146,6 +146,7 @@ func main() {
 		select {
 		case <-term:
 			glog.Infoln("Start to shutdown DFS server...")
+			dfsServer.Unregister()
 			grpcServer.GracefulStop()
 			glog.Infoln("DFS server stopped gracefully.")
 			retire <- true

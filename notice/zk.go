@@ -142,6 +142,12 @@ func (k *DfsZK) createEphemeralSequenceNode(prefix string, data []byte) (string,
 	}
 }
 
+// Unregister unregisters a server.
+func (k *DfsZK) Unregister(node string) error {
+	fullPath := filepath.Join(ShardDfsPath, node)
+	return k.Delete(fullPath, -1)
+}
+
 // Register registers a server.
 // if check is true, the returned chan will be noticed when sibling changed.
 func (k *DfsZK) Register(prefix string, data []byte, startCheckRoutine bool) (string, <-chan []byte, <-chan error, <-chan struct{}, <-chan struct{}) {

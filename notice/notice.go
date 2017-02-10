@@ -19,6 +19,9 @@ type Notice interface {
 	// will start a routine to process the nodes change, otherwise not.
 	Register(prefix string, data []byte, startCheckRoutine bool) (string, <-chan []byte, <-chan error, <-chan struct{}, <-chan struct{})
 
+	// Unregister unregisters a server.
+	Unregister(path string) error
+
 	// Close release resource hold by Notice.
 	CloseZk()
 }

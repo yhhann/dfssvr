@@ -52,6 +52,19 @@ type DFSServer struct {
 	selector *HandlerSelector
 }
 
+// Unregister closes connection of registered client
+// and unregister self from zk.
+func (s *DFSServer) Unregister() {
+	if s == nil {
+		return
+	}
+
+	if s.register != nil {
+		s.register.Unregister() // ignore error
+		s.register.Close()
+	}
+}
+
 // Close releases resource held by DFSServer.
 func (s *DFSServer) Close() {
 	if s == nil {

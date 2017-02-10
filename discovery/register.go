@@ -23,6 +23,9 @@ type Register interface {
 	// Register registers the DfsServer
 	Register(*discovery.DfsServer) error
 
+	// Unregister unregisters the DfsServer
+	Unregister() error
+
 	// GetDfsServerMap returns the map of DfsServer,
 	// which will be updated in realtime.
 	GetDfsServerMap() map[string]*discovery.DfsServer
@@ -32,6 +35,9 @@ type Register interface {
 
 	// RemoveObserver removes an observer for DfsServer node changed.
 	RemoveObserver(chan<- struct{})
+
+	// Close closes connection of registered client.
+	Close()
 }
 
 // ZKDfsServerRegister implements the Register interface
@@ -107,6 +113,11 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 	return nil
 }
 
+// Unregister unregisters the DfsServer
+func (r *ZKDfsServerRegister) Unregister() error {
+	return r.notice.Unregister(transfer.NodeName)
+}
+
 // GetDfsServerMap returns the map of DfsServer, which be update in realtime.
 func (r *ZKDfsServerRegister) GetDfsServerMap() map[string]*discovery.DfsServer {
 	r.serversLock.RLock()
@@ -150,6 +161,21 @@ func (r *ZKDfsServerRegister) RemoveObserver(observer chan<- struct{}) {
 
 	delete(r.observers, observer)
 	close(observer)
+}
+
+// Close closes connection of registered client.
+func (r *ZKDfsServerRegister) Close() {
+	r.observersLock.Lock()
+	defer r.observersLock.Unlock()
+
+	for observer, _ := range r.observers {
+		n := r.observers[observer]
+		delete(r.observers, observer)
+		close(observer)
+		glog.V(3).Infof("Close observer %v.", n)
+	}
+
+	glog.Infoln("Succeeded to close observers.")
 }
 
 func NewZKDfsServerRegister(notice notice.Notice) *ZKDfsServerRegister {
