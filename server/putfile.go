@@ -24,7 +24,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 }
 
 // putFileStream receives file content from client and saves to storage.
-func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []interface{}) error {
+func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []interface{}) (msgFunc, error) {
 	var reqInfo *transfer.FileInfo
 	var file fileop.DFSFile
 	var length int
@@ -32,15 +32,17 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 
 	stream, ok := grpcStream.(transfer.FileTransfer_PutFileServer)
 	if !ok {
-		return AssertionError
+		return nil, AssertionError
 	}
 
 	serviceName, peerAddr, err := extractStreamFuncParams(args)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	startTime := time.Now()
+
+	var mf msgFunc
 
 	csize := 0
 	for {
@@ -48,7 +50,7 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 		if err == io.EOF {
 			if file == nil {
 				glog.Warningf("PutFile error, no file info")
-				return stream.SendAndClose(
+				return mf, stream.SendAndClose(
 					&transfer.PutFileRep{
 						File: &transfer.FileInfo{
 							Id: "no file info",
@@ -59,10 +61,10 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 			err := s.finishPutFile(file, handler, stream, startTime, serviceName, peerAddr)
 			if err != nil {
 				glog.Warningf("PutFile error, %v", err)
-				return err
+				return mf, err
 			}
 
-			return nil
+			return mf, nil
 		}
 		if err != nil {
 			logInf := reqInfo
@@ -70,28 +72,31 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 				logInf = file.GetFileInfo()
 			}
 			glog.Warningf("PutFile error, file %s, %v", logInf, err)
-			return err
+			return mf, err
 		}
 
 		if file == nil {
 			reqInfo = req.GetInfo()
+			mf = func() (interface{}, string) {
+				return nil, fmt.Sprintf("putfile, name %s, domain %d, biz %s, size %d, user %d", reqInfo.Name, reqInfo.Domain, reqInfo.Biz, reqInfo.Size, reqInfo.User)
+			}
 			glog.V(3).Infof("%s start, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
 			if reqInfo == nil {
 				glog.Warningf("PutFile error, no file info")
-				return errors.New("PutFile error: no file info")
+				return mf, errors.New("PutFile error: no file info")
 			}
 
 			file, handler, err = s.createFile(reqInfo, stream, startTime)
 			if err != nil {
 				glog.Warningf("PutFile error, create file %v, error %v", reqInfo, err)
-				return err
+				return mf, err
 			}
 			defer file.Close()
 		}
 
 		csize, err = file.Write(req.GetChunk().Payload[:])
 		if err != nil {
-			return err
+			return mf, err
 		}
 
 		length += csize

@@ -48,6 +48,12 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 		return nil, AssertionError
 	}
 
+	var rep *transfer.DuplicateRep
+	var mf msgFunc
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("duplicate, fid %s, domain %d", req.Id, req.Domain)
+	}
+
 	did, err := s.duplicate(req.Id, req.Domain)
 	if err != nil {
 		event := &metadata.Event{
@@ -63,7 +69,7 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 			glog.Warningf("%s, error: %v", event.String(), er)
 		}
 
-		return nil, err
+		return mf, err
 	}
 
 	event := &metadata.Event{
@@ -79,9 +85,14 @@ func (s *DFSServer) duplicateBiz(c interface{}, r interface{}, args []interface{
 		glog.Warningf("%s, error: %v", event.String(), er)
 	}
 
-	return &transfer.DuplicateRep{
+	rep = &transfer.DuplicateRep{
 		Id: did,
-	}, nil
+	}
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("duplicate new fid %s, fid %s, domain %d", did, req.Id, req.Domain)
+	}
+
+	return mf, nil
 }
 
 func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {

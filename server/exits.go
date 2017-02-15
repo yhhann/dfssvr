@@ -78,10 +78,16 @@ func (s *DFSServer) existBiz(c interface{}, r interface{}, args []interface{}) (
 
 	result, err := s.exist(req.Id, req.Domain)
 	if err != nil {
-		glog.Warningf("Failed to exist %s, %d, %v", req.Id, req.Domain, err)
+		glog.V(3).Infof("Failed to exist %s, %d, %v", req.Id, req.Domain, err)
 	}
 
-	return &transfer.ExistRep{
-		Result: result,
-	}, err
+	var mf msgFunc
+	mf = func() (interface{}, string) {
+		return &transfer.ExistRep{
+				Result: result,
+			},
+			fmt.Sprintf("exist %t, fid %s, domain %d", result, req.Id, req.Domain)
+	}
+
+	return mf, err
 }

@@ -59,10 +59,16 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 		return nil, AssertionError
 	}
 
+	var rep *transfer.GetByMd5Rep
+	var mf msgFunc
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("getbymd5, md5 %s, domain %d", req.Md5, req.Domain)
+	}
+
 	p, oid, err := s.findByMd5(req.Md5, req.Domain, req.Size)
 	if err != nil {
-		glog.Warningf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
-		return nil, err
+		glog.V(3).Infof("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
+		return mf, err
 	}
 
 	did, err := p.Duplicate(oid)
@@ -79,7 +85,7 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 			glog.Warningf("%s, error: %v", event.String(), er)
 		}
 
-		return nil, err
+		return mf, err
 	}
 
 	event := &metadata.Event{
@@ -97,9 +103,15 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 	glog.V(3).Infof("Succeeded to get file by md5, fid %v, md5 %v, domain %d, length %d",
 		oid, req.Md5, req.Domain, req.Size)
 
-	return &transfer.GetByMd5Rep{
+	rep = &transfer.GetByMd5Rep{
 		Fid: did,
-	}, nil
+	}
+
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("getbymd5 new fid %s, md5 %s, domain %d", did, req.Md5, req.Domain)
+	}
+
+	return mf, nil
 }
 
 // ExistByMd5 checks existentiality of a file.
@@ -145,15 +157,26 @@ func (s *DFSServer) existByMd5Biz(c interface{}, r interface{}, args []interface
 		return nil, AssertionError
 	}
 
-	_, _, err := s.findByMd5(req.Md5, req.Domain, req.Size)
-	if err != nil {
-		glog.Warningf("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
-		return nil, err
+	var rep *transfer.ExistRep
+	var mf msgFunc
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("existbymd5, md5 %s, domain %d", req.Md5, req.Domain)
 	}
 
-	return &transfer.ExistRep{
+	_, _, err := s.findByMd5(req.Md5, req.Domain, req.Size)
+	if err != nil {
+		glog.V(3).Infof("Failed to find file by md5 [%s, %d, %d], error: %v", req.Md5, req.Domain, req.Size, err)
+		return mf, err
+	}
+
+	rep = &transfer.ExistRep{
 		Result: true,
-	}, nil
+	}
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("existbymd5 %t, md5 %s, domain %d", rep.Result, req.Md5, req.Domain)
+	}
+
+	return mf, nil
 }
 
 func (s *DFSServer) findByMd5(md5 string, domain int64, size int64) (fileop.DFSFileHandler, string, error) {

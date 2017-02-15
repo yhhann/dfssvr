@@ -14,8 +14,19 @@ import (
 	"jingoal.com/dfs/instrument"
 )
 
+// msgFunc represents function which returns an interface
+// and an accompanied message.
+type msgFunc func() (interface{}, string)
+
+// bizResult represents the result returns from business function.
+type bizResult struct {
+	desc string
+	r    interface{}
+	e    error
+}
+
 // streamFunc represents function which process stream operation.
-type streamFunc func(interface{}, interface{}, []interface{}) error
+type streamFunc func(interface{}, interface{}, []interface{}) (msgFunc, error)
 
 // withStreamDeadline processes a stream grpc calling with deadline.
 func (f streamFunc) withStreamDeadline(serviceName string, req interface{}, stream interface{}, args ...interface{}) error {
@@ -25,7 +36,8 @@ func (f streamFunc) withStreamDeadline(serviceName string, req interface{}, stre
 		return err
 	}
 
-	return f(req, stream, args)
+	_, err := f(req, stream, args)
+	return err
 }
 
 // bizFunc represents function which process biz logic.
@@ -37,6 +49,7 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 
 	entry(serviceName)
 
+	msgChan := make(chan string, 1)
 	ctx, cancel := context.WithCancel(getContext(env))
 
 	defer func() {
@@ -52,23 +65,24 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 
 		if se, ok := e.(transport.StreamError); ok && (se.Code == codes.DeadlineExceeded) || (e == context.DeadlineExceeded) {
 			instrument.TimeoutHistogram <- me
-			glog.Infof("%s, deadline exceeded, in %v seconds.", serviceName, elapse.Seconds())
+			glog.Infof("%s, deadline exceeded, in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
 		} else if e != nil {
 			if e != fileop.FileNotFound {
 				instrument.FailedCounter <- me
-				glog.Infof("%s error %v, in %v seconds.", serviceName, e, elapse.Seconds())
+				glog.Infof("%s error %v, in %.9f seconds, %s.", serviceName, e, elapse.Seconds(), <-msgChan)
 			} else {
 				instrument.SuccessDuration <- me
-				glog.Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
+				glog.Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
 			}
 		} else {
 			instrument.SuccessDuration <- me
-			glog.Infof("%s finished in %v seconds.", serviceName, elapse.Seconds())
+			glog.Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
 		}
 
 		exit(serviceName)
 	}()
 
+	result := bizResult{}
 	if deadline, ok := ctx.Deadline(); ok {
 		timeout := deadline.Sub(startTime)
 
@@ -78,17 +92,12 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 			return
 		}
 
-		type Result struct {
-			r interface{}
-			e error
-		}
-		results := make(chan *Result, 1)
+		results := make(chan *bizResult, 1)
 
 		go func() {
-			result := &Result{}
 			// Do business.
-			result.r, result.e = f(env, req, args)
-			results <- result
+			result = callBizFunc(f, env, req, args)
+			results <- &result
 			close(results)
 		}()
 
@@ -96,9 +105,11 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 		case result := <-results:
 			r = result.r
 			e = result.e
+			msgChan <- result.desc
 			return
 		case <-ctx.Done():
 			e = ctx.Err()
+			msgChan <- e.Error()
 			return
 		}
 	}
@@ -107,7 +118,24 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 		Name:  serviceName,
 		Value: 1,
 	}
-	return f(env, req, args)
+
+	result = callBizFunc(f, env, req, args)
+	msgChan <- result.desc
+	return result.r, result.e
+}
+
+func callBizFunc(f bizFunc, env interface{}, req interface{}, args []interface{}) (result bizResult) {
+	var err error
+
+	result.r, err = f(env, req, args)
+	if err != nil {
+		result.e = err
+	}
+
+	if mf, ok := result.r.(msgFunc); ok {
+		result.r, result.desc = mf()
+	}
+	return
 }
 
 // streamBizFunc is an instance of bizFunc.
@@ -125,7 +153,7 @@ func streamBizFunc(stream interface{}, req interface{}, args []interface{}) (int
 		return nil, AssertionError
 	}
 
-	return nil, sFunc(req, stream, as)
+	return sFunc(req, stream, as)
 }
 
 func getDeadline(env interface{}) (time.Time, bool) {

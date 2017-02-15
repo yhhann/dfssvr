@@ -83,7 +83,7 @@ func (h *GlusterHandler) Close() error {
 func (h *GlusterHandler) copySessionAndGridFS() (*mgo.Session, *mgo.GridFS) {
 	session, err := metadata.CopySession(h.Uri)
 	if err != nil {
-		glog.Error("Error, session is nil")
+		glog.Errorf("Failed to copy session for %s, %v", h.Uri, err)
 	}
 
 	return session, session.DB(h.Shard.Name).GridFS("fs")

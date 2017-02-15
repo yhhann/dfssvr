@@ -51,12 +51,21 @@ func (s *DFSServer) statBiz(c interface{}, r interface{}, args []interface{}) (i
 		return nil, AssertionError
 	}
 
+	var mf msgFunc
+	mf = func() (interface{}, string) {
+		return nil, fmt.Sprintf("stat, fid %s, domain %d", req.Id, req.Domain)
+	}
 	_, _, info, err := s.findFileForRead(req.Id, req.Domain)
 	if err != nil {
-		return nil, err
+		return mf, err
 	}
 
-	return &transfer.PutFileRep{
-		File: info,
-	}, nil
+	mf = func() (interface{}, string) {
+		return &transfer.PutFileRep{
+				File: info,
+			},
+			fmt.Sprintf("stat true, fid %s, domain %d, size %d, biz %s", info.Id, info.Domain, info.Size, info.Biz)
+	}
+
+	return mf, nil
 }

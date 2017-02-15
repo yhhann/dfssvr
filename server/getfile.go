@@ -27,17 +27,22 @@ func (s *DFSServer) GetFile(req *transfer.GetFileReq, stream transfer.FileTransf
 	return streamFunc(s.getFileStream).withStreamDeadline(serviceName, req, stream, serviceName, peerAddr, s)
 }
 
-func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, args []interface{}) error {
+func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, args []interface{}) (msgFunc, error) {
+	var mf msgFunc
 	startTime := time.Now()
 
 	serviceName, peerAddr, err := extractStreamFuncParams(args)
 	if err != nil {
-		return err
+		return mf, err
 	}
 
 	req, stream, err := verifyFileStream(request, grpcStream)
 	if err != nil {
-		return err
+		return mf, err
+	}
+
+	mf = func() (interface{}, string) {
+		return nil, fmt.Sprintf("getfile, fid %s, domain %d", req.Id, req.Domain)
 	}
 
 	_, file, err := s.openFileForRead(req.Id, req.Domain)
@@ -55,7 +60,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 				glog.Warningf("%s, error: %v", event.String(), er)
 			}
 		}
-		return err
+		return mf, err
 	}
 	defer file.Close()
 
@@ -70,7 +75,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 					Value: float64(expected.Nanoseconds()),
 				}
 				glog.Warningf("%s, timeout return early, expected %v, given %v", serviceName, expected, given)
-				return err
+				return mf, err
 			}
 		}
 	}
@@ -82,7 +87,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 		},
 	})
 	if err != nil {
-		return err
+		return mf, err
 	}
 
 	// Second, we send file content in a loop.
@@ -102,7 +107,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			})
 			if err != nil {
 				glog.Warningf("GetFile, send to client error, %s, %v", req.Id, err)
-				return err
+				return mf, err
 			}
 		}
 
@@ -113,11 +118,11 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			instrumentGetFile(off, rate, serviceName, file.GetFileInfo().Biz)
 			glog.V(3).Infof("GetFile ok, %s, length %d, elapse %d, rate %d kbit/s", req, off, nsecs, rate)
 
-			return nil
+			return mf, nil
 		}
 		if err != nil {
 			glog.Warningf("GetFile, read source error, %s, %v", req.Id, err)
-			return err
+			return mf, err
 		}
 
 		off += int64(length)

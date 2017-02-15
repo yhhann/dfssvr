@@ -46,32 +46,43 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 		return nil, AssertionError
 	}
 
+	var rep *transfer.CopyRep
+	var mf msgFunc
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("copy, srcfid %s, srddomain %d, dstdomain %d", req.SrcFid, req.SrcDomain, req.DstDomain)
+	}
+
 	if req.SrcDomain == req.DstDomain {
 		did, err := s.duplicate(req.SrcFid, req.DstDomain)
 		if err != nil {
-			return nil, err
+			return mf, err
 		}
 
 		glog.V(3).Infof("Copy is converted to duplicate, srcId: %s, srcDomain: %d, dstDomain: %d",
 			req.SrcFid, req.SrcDomain, req.DstDomain)
 
-		return &transfer.CopyRep{
+		rep = &transfer.CopyRep{
 			Fid: did,
-		}, nil
+		}
+		mf = func() (interface{}, string) {
+			return rep, fmt.Sprintf("copy new fid %s, srcfid %s, srddomain %d, dstdomain %d", did, req.SrcFid, req.SrcDomain, req.DstDomain)
+		}
+
+		return mf, nil
 	}
 
 	startTime := time.Now()
 
 	_, rf, err := s.openFileForRead(req.SrcFid, req.SrcDomain)
 	if err != nil {
-		return nil, err
+		return mf, err
 	}
 	defer rf.Close()
 
 	// open destination file.
 	handler, err := s.selector.getDFSFileHandlerForWrite(req.DstDomain)
 	if err != nil {
-		return nil, err
+		return mf, err
 	}
 
 	copiedInf := *rf.GetFileInfo()
@@ -81,7 +92,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 
 	wf, err := (*handler).Create(&copiedInf)
 	if err != nil {
-		return nil, err
+		return mf, err
 	}
 
 	defer wf.Close()
@@ -89,7 +100,7 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 	length, err := io.Copy(wf, rf)
 	if err != nil {
 		glog.Warningf("Failed to copy file %s, %v", req.SrcFid, err)
-		return nil, err
+		return mf, err
 	}
 
 	inf := wf.GetFileInfo()
@@ -128,7 +139,12 @@ func (s *DFSServer) copyBiz(c interface{}, r interface{}, args []interface{}) (i
 		glog.Warningf("%s, error: %v", event.String(), err)
 	}
 
-	return &transfer.CopyRep{
+	rep = &transfer.CopyRep{
 		Fid: inf.Id,
-	}, nil
+	}
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("copy new fid %s, srcfid %s, srddomain %d, dstdomain %d", inf.Id, req.SrcFid, req.SrcDomain, req.DstDomain)
+	}
+
+	return mf, nil
 }

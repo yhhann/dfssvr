@@ -2,6 +2,7 @@ package server
 
 import (
 	"flag"
+	"fmt"
 
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
@@ -43,7 +44,14 @@ func (s *DFSServer) negotiateBiz(ctx interface{}, req interface{}, args []interf
 		rep := &transfer.NegotiateChunkSizeRep{
 			Size: fileop.NegotiatedChunkSize,
 		}
-		return rep, nil
+
+		var mf msgFunc
+		mf = func() (interface{}, string) {
+			return rep, fmt.Sprintf("negosize size %d", rep.Size)
+		}
+
+		return mf, nil
+
 	}
 	return nil, AssertionError
 }

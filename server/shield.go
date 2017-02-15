@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"sync"
 	"time"
@@ -84,6 +85,7 @@ func poll(key string) chan chan BizFuncResult {
 func shield(serviceName string, key string, timeout time.Duration, f bizFunc, paras ...interface{}) (interface{}, error) {
 	if len(paras) < 2 {
 		glog.Errorf("parameter number less than 2.")
+		return nil, errors.New("parameter number less than 2")
 	}
 
 	tckr := time.NewTicker(timeout)

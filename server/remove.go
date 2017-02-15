@@ -77,7 +77,11 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 		}
 	}
 
-	rep := &transfer.RemoveFileRep{}
+	var mf msgFunc
+	var rep *transfer.RemoveFileRep
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("remove, fid %s, domain %d", req.Id, req.Domain)
+	}
 
 	var p fileop.DFSFileHandler
 	var fm *fileop.FileMeta
@@ -85,7 +89,7 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
 	if err != nil {
 		glog.Warningf("RemoveFile, failed to get handler for read, error: %v", err)
-		return rep, err
+		return mf, err
 	}
 
 	var dr DeleteResult
@@ -104,7 +108,7 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	if err == nil && result {
 		fid, ok := fm.Id.(bson.ObjectId)
 		if !ok {
-			return nil, fmt.Errorf("Invalid id, %T, %v", fm.Id, fm.Id)
+			return mf, fmt.Errorf("Invalid id, %T, %v", fm.Id, fm.Id)
 		}
 		slog := &metadata.SpaceLog{
 			Domain:    fm.Domain,
@@ -132,19 +136,23 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	}
 	if er := s.eventOp.SaveEvent(resultEvent); er != nil {
 		// log into file instead return.
-		glog.Warningf("save remove event error: %v", er)
+		glog.Warningf("Failed to save remove event, %v", er)
 	}
-
-	// TODO(hanyh): monitor remove.
 
 	if result {
-		glog.V(2).Infof("RemoveFile, succeeded to remove entity %s from %v, err %v.", req.Id, p.Name(), err)
+		glog.V(3).Infof("RemoveFile, succeeded to remove entity %s from %v, err %v.", req.Id, p.Name(), err)
 	} else {
-		glog.V(2).Infof("RemoveFile, succeeded to remove reference %s from %v, err %v.", req.Id, p.Name(), err)
+		glog.V(3).Infof("RemoveFile, succeeded to remove reference %s from %v, err %v.", req.Id, p.Name(), err)
 	}
 
-	rep.Result = result
-	return rep, nil
+	rep = &transfer.RemoveFileRep{
+		Result: result,
+	}
+	mf = func() (interface{}, string) {
+		return rep, fmt.Sprintf("remove entity %t, fid %s, domain %d, from %v", rep.Result, req.Id, req.Domain, p.Name())
+	}
+
+	return mf, nil
 }
 
 type DeleteResult struct {
