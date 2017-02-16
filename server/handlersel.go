@@ -13,6 +13,7 @@ import (
 	"gopkg.in/mgo.v2/bson"
 
 	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/instrument"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/notice"
 )
@@ -515,9 +516,19 @@ func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
 		if status != statusOk {
 			glog.Warningf("check handler %v %s", handler.Name(), status.String())
 		}
+		instrument.HealthCheckStatus <- &instrument.Measurements{
+			Name:  handler.Name(),
+			Biz:   status.String(),
+			Value: 1.0,
+		}
 		return status
 	case <-ticker.C:
 		glog.Warningf("check handler %v expired", handler.Name())
+		instrument.HealthCheckStatus <- &instrument.Measurements{
+			Name:  handler.Name(),
+			Biz:   "expired",
+			Value: 1.0,
+		}
 		return statusFailure
 	}
 }

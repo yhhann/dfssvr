@@ -140,6 +140,17 @@ var (
 	)
 	StorageStatus = make(chan *Measurements, *metricsBufSize)
 
+	healthCheckStatus = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "healthcheck",
+			Help:      "Health Check.",
+		},
+		[]string{"handler", "status"},
+	)
+	HealthCheckStatus = make(chan *Measurements, *metricsBufSize)
+
 	createdSessionGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "dfs2_0",
@@ -240,6 +251,7 @@ func init() {
 	prometheus.MustRegister(flagGauge)
 	prometheus.MustRegister(backstoreFileCounter)
 	prometheus.MustRegister(mergedQuery)
+	prometheus.MustRegister(healthCheckStatus)
 }
 
 func StartMetrics() {
@@ -287,6 +299,8 @@ func StartMetrics() {
 					backstoreFileCounter.WithLabelValues(m.Name).Inc()
 				case m := <-MergedQuery:
 					mergedQuery.WithLabelValues(m.Name).Observe(m.Value)
+				case m := <-HealthCheckStatus:
+					healthCheckStatus.WithLabelValues(m.Name, m.Biz).Inc()
 				}
 			}
 		}()
