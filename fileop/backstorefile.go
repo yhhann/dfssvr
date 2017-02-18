@@ -127,9 +127,21 @@ func (bsh *BackStoreHandler) Remove(id string, domain int64) (bool, *FileMeta, e
 	if result {
 		if meta != nil && meta.Fid != "" {
 			deleteResult, err := weedfs.Remove(meta.Fid, domain, bsh.BackStoreShard.MasterUri)
-			glog.V(3).Infof("Remove file from %s %s %t, error %v",
-				strings.Join([]string{bsh.Name(), bsh.BackStoreShard.Name}, "@"),
-				meta.Fid, deleteResult, err)
+			if err != nil {
+				instrument.BackstoreFileCounter <- &instrument.Measurements{
+					Name:  "remove_failed",
+					Value: 1.0,
+				}
+				glog.V(3).Infof("Failed to remove file %s from %s, %v",
+					meta.Fid, strings.Join([]string{bsh.Name(), bsh.BackStoreShard.Name}, "@"), err)
+			} else {
+				instrument.BackstoreFileCounter <- &instrument.Measurements{
+					Name:  "removed",
+					Value: 1.0,
+				}
+				glog.V(3).Infof("Succeeded to remove file %s from %s, %t",
+					meta.Fid, strings.Join([]string{bsh.Name(), bsh.BackStoreShard.Name}, "@"), deleteResult)
+			}
 		}
 	}
 
