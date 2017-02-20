@@ -78,7 +78,7 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 		if file == nil {
 			reqInfo = req.GetInfo()
 			mf = func() (interface{}, string) {
-				return nil, fmt.Sprintf("putfile, name %s, domain %d, biz %s, size %d, user %d", reqInfo.Name, reqInfo.Domain, reqInfo.Biz, reqInfo.Size, reqInfo.User)
+				return nil, fmt.Sprintf("putfile, name %s, domain %d, size %d, biz %s, user %d", reqInfo.Name, reqInfo.Domain, reqInfo.Size, reqInfo.Biz, reqInfo.User)
 			}
 			glog.V(3).Infof("%s start, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
 			if reqInfo == nil {

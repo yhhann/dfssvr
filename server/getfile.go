@@ -64,11 +64,17 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 	}
 	defer file.Close()
 
+	fi := file.GetFileInfo()
+	fi.Domain = req.Domain
+	mf = func() (interface{}, string) {
+		return nil, fmt.Sprintf("getfile, fid %s, domain %d, size %d, biz %s, name %s", fi.Id, fi.Domain, fi.Size, fi.Biz, fi.Name)
+	}
+
 	// check timeout, for test.
 	if *enablePreJudge {
 		if dl, ok := getDeadline(stream); ok {
 			given := dl.Sub(startTime)
-			expected, err := checkTimeout(file.GetFileInfo().Size, rRate, given)
+			expected, err := checkTimeout(fi.Size, rRate, given)
 			if err != nil {
 				instrument.PrejudgeExceed <- &instrument.Measurements{
 					Name:  serviceName,
@@ -83,7 +89,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 	// First, we send file info.
 	err = stream.Send(&transfer.GetFileRep{
 		Result: &transfer.GetFileRep_Info{
-			Info: file.GetFileInfo(),
+			Info: fi,
 		},
 	})
 	if err != nil {
@@ -115,7 +121,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			nsecs := time.Since(startTime).Nanoseconds() + 1
 			rate := off * 8 * 1e6 / nsecs // in kbit/s
 
-			instrumentGetFile(off, rate, serviceName, file.GetFileInfo().Biz)
+			instrumentGetFile(off, rate, serviceName, fi.Biz)
 			glog.V(3).Infof("GetFile ok, %s, length %d, elapse %d, rate %d kbit/s", req, off, nsecs, rate)
 
 			return mf, nil

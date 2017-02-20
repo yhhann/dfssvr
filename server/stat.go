@@ -60,11 +60,12 @@ func (s *DFSServer) statBiz(c interface{}, r interface{}, args []interface{}) (i
 		return mf, err
 	}
 
+	info.Domain = req.Domain
 	mf = func() (interface{}, string) {
 		return &transfer.PutFileRep{
 				File: info,
 			},
-			fmt.Sprintf("stat true, fid %s, domain %d, size %d, biz %s", info.Id, info.Domain, info.Size, info.Biz)
+			fmt.Sprintf("stat true, fid %s, domain %d, size %d, biz %s, name %s", info.Id, info.Domain, info.Size, info.Biz, info.Name)
 	}
 
 	return mf, nil
