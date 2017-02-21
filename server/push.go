@@ -13,36 +13,35 @@ import (
 func (s *DFSServer) GetDfsServers(req *discovery.GetDfsServersReq, stream discovery.DiscoveryService_GetDfsServersServer) error {
 	clientId := strings.Join([]string{req.GetClient().Id, getPeerAddressString(stream.Context())}, "/")
 
-	removeObserver := true
 	observer := make(chan struct{}, 100)
 	s.register.AddObserver(observer, clientId)
 
 	glog.Infof("Client %s connected.", clientId)
 
 	ticker := time.NewTicker(time.Duration(*heartbeatInterval) * time.Second)
+	defer ticker.Stop()
+
 outLoop:
 	for {
 		select {
 		case _, ok := <-observer:
 			if !ok {
-				removeObserver = false
-				break outLoop
+				glog.Infof("Start to close stream of discovery to %s", clientId)
+				return nil
 			}
 			if err := s.sendDfsServerMap(req, stream); err != nil {
+				glog.Warningf("Failed to send server list to %s, %v.", clientId, err)
 				break outLoop
 			}
-
 		case <-ticker.C:
 			if err := s.sendHeartbeat(req, stream); err != nil {
+				glog.Warningf("Failed to send heart beat to %s, %v.", clientId, err)
 				break outLoop
 			}
 		}
 	}
 
-	ticker.Stop()
-	if removeObserver {
-		s.register.RemoveObserver(observer)
-	}
+	s.register.RemoveObserver(observer)
 	glog.Infof("Client connection closed, client: %s", clientId)
 
 	return nil

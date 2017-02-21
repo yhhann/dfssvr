@@ -145,9 +145,13 @@ func main() {
 	go func() {
 		select {
 		case <-term:
-			glog.Infoln("Start to shutdown DFS server...")
+			glog.Infoln("Start to shutdown DFS server ...")
+			startToShowProcess(time.Second)
 			dfsServer.Unregister()
+
 			grpcServer.GracefulStop()
+
+			glog.Infof("Processing task: %d.", instrument.GetInProcess())
 			glog.Infoln("DFS server stopped gracefully.")
 			retire <- true
 		}
@@ -156,10 +160,25 @@ func main() {
 	grpcServer.Serve(lis)
 
 	<-retire
+
+	glog.Flush()
 }
 
 func flushLogDaemon() {
 	for _ = range time.Tick(time.Duration(*logFlushInterval) * time.Second) {
 		glog.Flush()
 	}
+}
+
+func startToShowProcess(interval time.Duration) {
+	go func() {
+		ticker := time.Tick(interval)
+		for {
+			select {
+			case <-ticker:
+				glog.Infof("Processing task: %d.", instrument.GetInProcess())
+				glog.Flush()
+			}
+		}
+	}()
 }

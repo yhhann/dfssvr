@@ -22,6 +22,14 @@ var (
 )
 
 var (
+	inProcessTotal = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "in_process_total",
+			Help:      "Total in process.",
+		},
+	)
 	inProcessGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "dfs2_0",
@@ -261,6 +269,7 @@ func StartMetrics() {
 				select {
 				case m := <-InProcess:
 					inProcessGauge.WithLabelValues(m.Name).Add(m.Value)
+					inProcessTotal.Add(m.Value)
 				case m := <-FailedCounter:
 					failCounter.WithLabelValues(m.Name).Inc()
 				case m := <-NoDeadlineCounter:
@@ -322,4 +331,13 @@ func GetTransferRate(method string) (float64, error) {
 	}
 
 	return m.GetGauge().GetValue(), nil
+}
+
+func GetInProcess() int {
+	m := &dto.Metric{}
+	if err := inProcessTotal.Write(m); err != nil {
+		return 0
+	}
+
+	return int(m.GetGauge().GetValue())
 }

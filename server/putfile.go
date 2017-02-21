@@ -64,6 +64,11 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 				return mf, err
 			}
 
+			mf = func() (interface{}, string) {
+				inf := file.GetFileInfo()
+				return nil, fmt.Sprintf("putfile, name %s, domain %d, size %d, biz %s, user %d", inf.Name, inf.Domain, inf.Size, inf.Biz, inf.User)
+			}
+
 			return mf, nil
 		}
 		if err != nil {
@@ -77,13 +82,14 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 
 		if file == nil {
 			reqInfo = req.GetInfo()
-			mf = func() (interface{}, string) {
-				return nil, fmt.Sprintf("putfile, name %s, domain %d, size %d, biz %s, user %d", reqInfo.Name, reqInfo.Domain, reqInfo.Size, reqInfo.Biz, reqInfo.User)
-			}
-			glog.V(3).Infof("%s start, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
 			if reqInfo == nil {
 				glog.Warningf("PutFile error, no file info")
 				return mf, errors.New("PutFile error: no file info")
+			}
+			glog.V(3).Infof("%s start, file info: %v, client: %s", serviceName, reqInfo, peerAddr)
+
+			mf = func() (interface{}, string) {
+				return nil, fmt.Sprintf("putfile, name %s, domain %d, size %d, biz %s, user %d", reqInfo.Name, reqInfo.Domain, reqInfo.Size, reqInfo.Biz, reqInfo.User)
 			}
 
 			file, handler, err = s.createFile(reqInfo, stream, startTime)

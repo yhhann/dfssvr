@@ -48,6 +48,7 @@ type ZKDfsServerRegister struct {
 	serversLock   sync.RWMutex
 	observersLock sync.RWMutex
 	registered    int32 // 1 for registered, 0 for not registered.
+	shutdown      chan struct{}
 }
 
 // Register registers a DfsServer.
@@ -70,6 +71,9 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 	go func() {
 		for {
 			select {
+			case <-r.shutdown:
+				glog.Infof("Unregister %s from zookeeper.", nodeName)
+				return
 			case <-clearFlag:
 				r.cleanDfsServerMap()
 
@@ -115,6 +119,7 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 
 // Unregister unregisters the DfsServer
 func (r *ZKDfsServerRegister) Unregister() error {
+	r.shutdown <- struct{}{}
 	return r.notice.Unregister(transfer.NodeName)
 }
 
@@ -172,10 +177,8 @@ func (r *ZKDfsServerRegister) Close() {
 		n := r.observers[observer]
 		delete(r.observers, observer)
 		close(observer)
-		glog.V(3).Infof("Close observer %v.", n)
+		glog.Infof("Succeeded to close observer %s.", n)
 	}
-
-	glog.Infoln("Succeeded to close observers.")
 }
 
 func NewZKDfsServerRegister(notice notice.Notice) *ZKDfsServerRegister {
@@ -183,6 +186,7 @@ func NewZKDfsServerRegister(notice notice.Notice) *ZKDfsServerRegister {
 	r.notice = notice
 	r.serverMap = make(map[string]*discovery.DfsServer)
 	r.observers = make(map[chan<- struct{}]string)
+	r.shutdown = make(chan struct{}, 1)
 
 	return r
 }

@@ -9,6 +9,21 @@ import (
 )
 
 func Test(t *testing.T) {
+	inProcessTotal.Add(1.0)
+	inProcessTotal.Add(1.0)
+
+	inProcessTotal.Dec()
+	inProcessTotal.Add(1.0)
+	inProcessTotal.Add(1.0)
+	inProcessTotal.Dec()
+	inProcessTotal.Dec()
+	inProcessTotal.Dec()
+
+	v := GetInProcess()
+	t.Logf("in processing %d.", v)
+}
+
+func AnotherTest(t *testing.T) {
 	StartMetrics()
 	for {
 		v := (rand.NormFloat64() * 200) + 10
