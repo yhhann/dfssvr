@@ -26,7 +26,7 @@ outLoop:
 		select {
 		case _, ok := <-observer:
 			if !ok {
-				glog.Infof("Start to close stream of discovery to %s", clientId)
+				glog.Infof("Succeeded to close stream to %s", clientId)
 				return nil
 			}
 			if err := s.sendDfsServerMap(req, stream); err != nil {

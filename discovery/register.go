@@ -72,7 +72,7 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 		for {
 			select {
 			case <-r.shutdown:
-				glog.Infof("Unregister %s from zookeeper.", nodeName)
+				glog.Infof("Succeeded to unregister self %s.", transfer.NodeName)
 				return
 			case <-clearFlag:
 				r.cleanDfsServerMap()
