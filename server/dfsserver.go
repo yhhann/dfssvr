@@ -104,10 +104,13 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 	p := strings.TrimSpace(*preferred)
 	if len(p) > 0 {
 		pre := strings.Split(p, ",")
-
-		preferred := make([]string, len(pre))
+		preferred := make([]string, 0, len(pre))
 		for _, s := range pre {
-			preferred = append(preferred, strings.TrimSpace(s))
+			ss := strings.TrimSpace(s)
+			if len(ss) == 0 {
+				continue
+			}
+			preferred = append(preferred, ss)
 		}
 
 		// 0 has lowest priority, and 1 higher than 0.
