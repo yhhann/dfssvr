@@ -2,6 +2,8 @@ package server
 
 import (
 	"fmt"
+	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -125,8 +127,14 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 }
 
 func callBizFunc(f bizFunc, env interface{}, req interface{}, args []interface{}) (result bizResult) {
-	var err error
+	defer func() {
+		if r := recover(); r != nil {
+			glog.V(3).Infof("%v\n%s", r, getStack())
+			result.e = fmt.Errorf("%v", r)
+		}
+	}()
 
+	var err error
 	result.r, err = f(env, req, args)
 	if err != nil {
 		result.e = err
@@ -184,4 +192,11 @@ func checkTimeout(size int64, rate float64, given time.Duration) (time.Duration,
 	}
 
 	return given, nil
+}
+
+func getStack() string {
+	stack := strings.Split(string(debug.Stack()), "\n")
+	stacks := make([]string, 0, len(stack))
+	stacks = append(stack[0:1], stack[7:]...)
+	return strings.Join(stacks, "\n")
 }
