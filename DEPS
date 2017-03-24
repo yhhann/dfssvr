@@ -36,6 +36,10 @@ deps {
     version: HEAD
   }
   repo {
+    name: "third-party-go/vendor/github.com/relops/cqlr"
+    version: HEAD
+  }
+  repo {
     name: "third-party-go/vendor/github.com/samuel/go-zookeeper"
     version: HEAD
   }
