@@ -24,7 +24,7 @@ func (s *DFSServer) PutFile(stream transfer.FileTransfer_PutFileServer) error {
 }
 
 // putFileStream receives file content from client and saves to storage.
-func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []interface{}) (msgFunc, error) {
+func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []interface{}) (msgfunc msgFunc, er error) {
 	var reqInfo *transfer.FileInfo
 	var file fileop.DFSFile
 	var length int
@@ -66,7 +66,7 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 
 			mf = func() (interface{}, string) {
 				inf := file.GetFileInfo()
-				return nil, fmt.Sprintf("putfile, name %s, domain %d, size %d, biz %s, user %d", inf.Name, inf.Domain, inf.Size, inf.Biz, inf.User)
+				return nil, fmt.Sprintf("putfile, fid %s, domain %d, size %d, biz %s, user %d, name %s", inf.Id, inf.Domain, inf.Size, inf.Biz, inf.User, inf.Name)
 			}
 
 			return mf, nil
@@ -97,7 +97,9 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 				glog.Warningf("PutFile error, create file %v, error %v", reqInfo, err)
 				return mf, err
 			}
-			defer file.Close()
+			defer func() {
+				er = file.Close()
+			}()
 		}
 
 		csize, err = file.Write(req.GetChunk().Payload[:])

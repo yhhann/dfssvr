@@ -6,6 +6,7 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
+	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/proto/transfer"
 )
 
@@ -58,6 +59,10 @@ func (s *DFSServer) statBiz(c interface{}, r interface{}, args []interface{}) (i
 	_, _, info, err := s.findFileForRead(req.Id, req.Domain)
 	if err != nil {
 		return mf, err
+	}
+
+	if info == nil {
+		return mf, fileop.FileNotFound
 	}
 
 	info.Domain = req.Domain

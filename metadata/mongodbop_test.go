@@ -1,9 +1,12 @@
 package metadata
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 const (
-	dbUri  = "mongodb://192.168.55.193:27017?maxPoolSize=30"
+	dbUri  = "mongodb://192.168.64.176:27017?maxPoolSize=30"
 	dbName = "shard"
 )
 
@@ -41,7 +44,7 @@ func TestFindAllSegmentsOrderByDomain(t *testing.T) {
 	}
 
 	chunks := sop.FindAllSegmentsOrderByDomain()
-	if len(chunks) != 4 {
+	if len(chunks) != 2 {
 		t.Errorf("FindAllSegmentsOrderByDomain length error: %v\n", len(chunks))
 	}
 }
@@ -54,8 +57,28 @@ func TestShard(t *testing.T) {
 
 	s, err := sop.LookupShardByName("gluster1")
 	if s == nil || err != nil {
-		t.Errorf("find server shard1 error")
+		t.Errorf("find server gluster1 error %v.", err)
 	}
+
+	fmt.Printf("%+v\n", s)
+
+	s, err = sop.LookupShardByName("glustra1")
+	if s == nil || err != nil {
+		t.Errorf("find server glustra1 error %v.", err)
+	}
+	if s.ShdType != Glustra {
+		t.Errorf("find server glustra1 error type %v", s.ShdType)
+	}
+
+	if len(s.Attr) == 0 {
+		t.Errorf("find server glustra1 attribue empty.")
+	}
+
+	if s.Attr["keyspace"] != "dfs" {
+		t.Errorf("find server glustra1 attribue error.")
+	}
+
+	fmt.Printf("%+v\n", s)
 
 	s, err = sop.LookupShardByName("shard-not-exist")
 	if s != nil || err == nil {
@@ -70,7 +93,7 @@ func TestFindAllShards(t *testing.T) {
 	}
 
 	shards := sop.FindAllShards()
-	if len(shards) != 5 {
+	if len(shards) != 6 {
 		t.Errorf("find all servers error: %v\n", err)
 	}
 

@@ -309,11 +309,6 @@ func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
 	}, nil
 }
 
-// HandlerType returns type of the handler.
-func (h *GlusterHandler) HandlerType() HandlerType {
-	return GlusterType
-}
-
 // IsHealthy checks whether shard is ok.
 func (h *GlusterHandler) IsHealthy() bool {
 	if err := h.session.Ping(); err != nil {

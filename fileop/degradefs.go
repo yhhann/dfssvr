@@ -67,11 +67,6 @@ func (h *DegradeHandler) Close() error {
 	return h.fh.Close()
 }
 
-// HandlerType returns type of the handler.
-func (h *DegradeHandler) HandlerType() HandlerType {
-	return DegradeType
-}
-
 // IsHealthy checks whether shard is ok.
 func (h *DegradeHandler) IsHealthy() bool {
 	return h.fh.IsHealthy()

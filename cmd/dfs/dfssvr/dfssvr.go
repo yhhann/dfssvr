@@ -87,6 +87,8 @@ func main() {
 	flag.Parse()
 	checkFlags()
 
+	logFlags()
+
 	go flushLogDaemon()
 	defer glog.Flush()
 
@@ -190,4 +192,12 @@ func flushLogDaemon() {
 	for _ = range time.Tick(time.Duration(*logFlushInterval) * time.Second) {
 		glog.Flush()
 	}
+}
+
+func logFlags() {
+	glog.Infoln("flags:")
+	flag.VisitAll(func(f *flag.Flag) {
+		glog.Infof("\t%s->%s\n", f.Name, f.Value)
+	})
+	glog.Flush()
 }

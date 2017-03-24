@@ -129,7 +129,7 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 func callBizFunc(f bizFunc, env interface{}, req interface{}, args []interface{}) (result bizResult) {
 	defer func() {
 		if r := recover(); r != nil {
-			glog.V(3).Infof("%v\n%s", r, getStack())
+			glog.Warningf("%v\n%s", r, getStack())
 			result.e = fmt.Errorf("%v", r)
 		}
 	}()

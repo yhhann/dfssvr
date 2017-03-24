@@ -14,15 +14,6 @@ const (
 	FileModeRead                          // For read only
 )
 
-type HandlerType uint
-
-const (
-	GlusterType   HandlerType = 1 << iota // For gluster type
-	GridFSType                            // For gridfs type
-	DegradeType                           // For degrade type
-	BackStoreType                         // For back store type
-)
-
 type DFSFileMeta struct {
 	Bizname   string `bson:"bizname"`
 	Fid       string `bson:"weedfid"`
@@ -67,9 +58,6 @@ type DFSFileHandler interface {
 
 	// Name returns handler's name.
 	Name() string
-
-	// HandlerType returns type of the handler.
-	HandlerType() HandlerType
 
 	// IsHealthy checks whether shard is ok.
 	IsHealthy() bool

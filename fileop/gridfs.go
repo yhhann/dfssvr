@@ -211,11 +211,6 @@ func (h *GridFsHandler) Close() error {
 	return nil
 }
 
-// HandlerType returns type of the handler.
-func (h *GridFsHandler) HandlerType() HandlerType {
-	return GridFSType
-}
-
 // IsHealthy checks whether shard is ok.
 func (h *GridFsHandler) IsHealthy() bool {
 	return h.session.Ping() == nil
