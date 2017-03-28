@@ -346,7 +346,7 @@ func NewMetaOp(seeds string, user string, pass string, keyspace string, consiste
 		Password: pass,
 	}
 
-	// NOTE(hanyh): any other properties?
+	// TODO(hanyh): Consider re-use letsgo/cql/conf to create cluster.
 
 	return &MetaOp{
 		cluster: cluster,

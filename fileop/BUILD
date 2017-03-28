@@ -6,6 +6,7 @@ go_library(
   name = "go_default_library",
   srcs = glob(["*.go"], exclude = ["*_test.go"]),
   deps = [
+    "//dfs/cassandra:go_default_library",
     "//dfs/conf:go_default_library",
     "//dfs/instrument:go_default_library",
     "//dfs/metadata:go_default_library",
@@ -13,6 +14,7 @@ go_library(
     "//dfs/recovery:go_default_library",
     "//dfs/util:go_default_library",
     "//seaweedfs-adaptor/weedfs:go_default_library",
+    "//third-party-go/vendor/github.com/gocql/gocql:go_default_library",
     "//third-party-go/vendor/github.com/golang/glog:go_default_library",
     "//third-party-go/vendor/github.com/kshlm/gogfapi/gfapi:go_default_library",
     "//third-party-go/vendor/gopkg.in/mgo.v2:go_default_library",
