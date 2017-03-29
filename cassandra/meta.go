@@ -3,7 +3,6 @@ package cassandra
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -78,7 +77,8 @@ type Ref struct {
 }
 
 type MetaOp struct {
-	cluster *gocql.ClusterConfig
+	*gocql.ClusterConfig
+
 	session *gocql.Session
 	lock    sync.Mutex
 }
@@ -319,7 +319,7 @@ func (op *MetaOp) getSession() (*gocql.Session, error) {
 	}
 
 	var err error
-	op.session, err = op.cluster.CreateSession()
+	op.session, err = op.CreateSession()
 
 	return op.session, err
 }
@@ -334,21 +334,15 @@ func (op *MetaOp) execute(target func(session *gocql.Session) error) error {
 }
 
 // NewMetaOp returns a MetaOp object with given parameters.
-func NewMetaOp(seeds string, user string, pass string, keyspace string, consistency gocql.Consistency, timeout time.Duration, conns int) *MetaOp {
-	ss := strings.Split(seeds, ",")
-	cluster := gocql.NewCluster(ss...)
-	cluster.Timeout = timeout
-	cluster.NumConns = conns
-	cluster.Keyspace = keyspace
-	cluster.Consistency = consistency
-	cluster.Authenticator = gocql.PasswordAuthenticator{
-		Username: user,
-		Password: pass,
-	}
-
+func NewMetaOp(seeds []string, sqlOptions ...func(*MetaOp)) *MetaOp {
 	// TODO(hanyh): Consider re-use letsgo/cql/conf to create cluster.
-
-	return &MetaOp{
-		cluster: cluster,
+	self := &MetaOp{
+		ClusterConfig: gocql.NewCluster(seeds...),
 	}
+
+	for _, option := range sqlOptions {
+		option(self)
+	}
+
+	return self
 }

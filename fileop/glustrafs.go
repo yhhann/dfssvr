@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -27,6 +28,7 @@ const (
 	GlustraAttrPass        = "pass"        // string
 	GlustraAttrKeyspace    = "keyspace"    // string
 	GlustraAttrConsistency = "consistency" // string
+	GlustraAttrPort        = "port"        // integer
 	GlustraAttrTimeout     = "timeout"     // integer
 	GlustraAttrConns       = "conns"       // integer
 )
@@ -295,37 +297,72 @@ func NewGlustraHandler(si *metadata.Shard, volLog string) (*GlustraHandler, erro
 		return nil, fmt.Errorf("invalid shard type %d.", si.ShdType)
 	}
 
-	timeout, ok := si.Attr[GlustraAttrTimeout].(int)
-	if !ok {
-		timeout = 600 // default 600 ms
-	}
-	conns, ok := si.Attr[GlustraAttrConns].(int)
-	if !ok {
-		conns = 2 // default 2 conns
-	}
-	user, ok := si.Attr[GlustraAttrUser].(string)
-	if !ok {
-		user = ""
-	}
-	pass, ok := si.Attr[GlustraAttrPass].(string)
-	if !ok {
-		pass = ""
-	}
-	ks := si.Attr[GlustraAttrKeyspace].(string) // panic
-	consistency, ok := si.Attr[GlustraAttrConsistency].(string)
-	if !ok {
-		consistency = "Quorum"
-	}
-
-	handler.draOp = dra.NewMetaOp(si.Uri, user, pass, ks,
-		gocql.ParseConsistency(consistency),
-		time.Duration(timeout)*time.Millisecond,
-		conns,
-	)
+	seeds := strings.Split(si.Uri, ",")
+	handler.draOp = dra.NewMetaOp(seeds, parseCqlOptions(si.Attr)...)
 
 	handler.duplfs = NewDuplDra(handler.draOp)
 
 	return handler, nil
+}
+
+// parseCqlOptions parses options of cassandra from map.
+func parseCqlOptions(attr map[string]interface{}) []func(*dra.MetaOp) {
+	options := make([]func(*dra.MetaOp), 0, len(attr))
+
+	options = append(options, func(m *dra.MetaOp) {
+		port, ok := attr[GlustraAttrPort].(int)
+		if !ok {
+			return
+		}
+		m.Port = port
+	})
+
+	options = append(options, func(m *dra.MetaOp) {
+		timeout, ok := attr[GlustraAttrTimeout].(int)
+		if !ok {
+			return
+		}
+		m.Timeout = time.Millisecond * time.Duration(timeout)
+	})
+
+	options = append(options, func(m *dra.MetaOp) {
+		conns, ok := attr[GlustraAttrConns].(int)
+		if !ok {
+			return
+		}
+		m.NumConns = conns
+	})
+
+	options = append(options, func(m *dra.MetaOp) {
+		ks := attr[GlustraAttrKeyspace].(string) // panic
+		m.Keyspace = ks
+	})
+
+	options = append(options, func(m *dra.MetaOp) {
+		consistency, ok := attr[GlustraAttrConsistency].(string)
+		if !ok {
+			return
+		}
+		m.Consistency = gocql.ParseConsistency(consistency)
+	})
+
+	options = append(options, func(m *dra.MetaOp) {
+		user, ok := attr[GlustraAttrUser].(string)
+		if !ok || len(user) == 0 {
+			return
+		}
+		pass, ok := attr[GlustraAttrPass].(string)
+		if !ok {
+			return
+		}
+
+		m.Authenticator = gocql.PasswordAuthenticator{
+			Username: user,
+			Password: pass,
+		}
+	})
+
+	return options
 }
 
 // GlustraFile implements DFSFile
