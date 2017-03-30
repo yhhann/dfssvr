@@ -129,14 +129,37 @@ func (hs *HandlerSelector) deleteHandler(handlerName string) {
 	glog.Infof("Succeeded to delete handler, shard: %s", handlerName)
 }
 
+func inferShardType(shard *metadata.Shard) {
+	if shard.ShdType != metadata.RegularServer {
+		return
+	}
+
+	if len(shard.VolHost) != 0 && len(shard.VolName) != 0 { // GlusterFS
+		shard.ShdType = metadata.Glustergo
+	} else { // GridFS
+		shard.ShdType = metadata.Gridgo
+	}
+}
+
 func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 	var handler fileop.DFSFileHandler
 	var err error
 
-	if len(shard.VolHost) != 0 && len(shard.VolName) != 0 { // GlusterFS
+	inferShardType(shard)
+
+	switch shard.ShdType {
+	case metadata.Glustra:
+		handler, err = fileop.NewGlustraHandler(shard, filepath.Join(*logDir, shard.Name))
+	case metadata.Glustergo:
 		handler, err = fileop.NewGlusterHandler(shard, filepath.Join(*logDir, shard.Name))
-	} else { // GridFS
+	case metadata.Gridgo:
 		handler, err = fileop.NewGridFsHandler(shard)
+	case metadata.DegradeServer:
+		handler, err = fileop.NewGridFsHandler(shard)
+	case metadata.BackstoreServer:
+		//skip
+	default:
+		err = fmt.Errorf("invalid shard type")
 	}
 	if err != nil {
 		glog.Warningf("Failed to create handler, shard: %v, error: %v", shard, err)
