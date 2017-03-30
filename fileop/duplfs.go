@@ -3,7 +3,6 @@ package fileop
 import (
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"gopkg.in/mgo.v2"
@@ -19,8 +18,6 @@ var (
 
 type DuplFs struct {
 	*metadata.DuplicateOp
-
-	refLock sync.RWMutex
 }
 
 // FindByMd5 finds a gridfs file by its md5.
@@ -106,10 +103,7 @@ func (duplfs *DuplFs) Duplicate(gridfs *mgo.GridFS, oid string) (string, error) 
 	return duplfs.DuplicateWithId(gridfs, oid, "", time.Now())
 }
 
-func (duplfs *DuplFs) saveRefAndDuplWithLock(pid bson.ObjectId, size int64) (*metadata.Ref, error) {
-	duplfs.refLock.Lock()
-	defer duplfs.refLock.Unlock()
-
+func (duplfs *DuplFs) saveRefAndDuplIfAbsent(pid bson.ObjectId, size int64) (*metadata.Ref, error) {
 	ref, err := duplfs.LookupRefById(pid)
 	if err != nil {
 		return nil, err
@@ -140,13 +134,6 @@ func (duplfs *DuplFs) saveRefAndDuplWithLock(pid bson.ObjectId, size int64) (*me
 	return ref, nil
 }
 
-func (duplfs *DuplFs) LookupRefByIdWithLock(rid bson.ObjectId) (*metadata.Ref, error) {
-	duplfs.refLock.RLock()
-	defer duplfs.refLock.RUnlock()
-
-	return duplfs.LookupRefById(rid)
-}
-
 // DuplicateWithId duplicates an entry for a file with given file id, not the content.
 func (duplfs *DuplFs) DuplicateWithId(gridfs *mgo.GridFS, oid string, dupId string, uploadDate time.Time) (string, error) {
 	primary, err := duplfs.search(gridfs, oid)
@@ -159,15 +146,9 @@ func (duplfs *DuplFs) DuplicateWithId(gridfs *mgo.GridFS, oid string, dupId stri
 		return "", fmt.Errorf("primary id invalided: %v", primary.Id())
 	}
 
-	ref, err := duplfs.LookupRefByIdWithLock(pid)
+	ref, err := duplfs.saveRefAndDuplIfAbsent(pid, primary.Size())
 	if err != nil {
 		return "", err
-	}
-	if ref == nil {
-		ref, err = duplfs.saveRefAndDuplWithLock(pid, primary.Size())
-		if err != nil {
-			return "", err
-		}
 	}
 	_, err = duplfs.IncRefCnt(ref.Id)
 	if err != nil {

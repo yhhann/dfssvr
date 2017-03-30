@@ -1,7 +1,6 @@
 package fileop
 
 import (
-	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -15,8 +14,6 @@ import (
 // The file duplication metadata is stored in cassandra.
 type DuplDra struct {
 	*dra.MetaOp
-
-	refLock sync.RWMutex
 }
 
 // FindByMd5 finds a file by its md5.
@@ -66,15 +63,9 @@ func (dupldra *DuplDra) DuplicateWithId(oid string, dupId string, createDate tim
 		return "", err
 	}
 
-	ref, err := dupldra.lookupRefByIdWithLock(primary.Id)
+	ref, err := dupldra.saveRefAndDuplIfAbsent(primary.Id, primary.Size, primary.Domain)
 	if err != nil {
 		return "", err
-	}
-	if ref == nil {
-		ref, err = dupldra.saveRefAndDuplWithLock(primary.Id, primary.Size, primary.Domain)
-		if err != nil {
-			return "", err
-		}
 	}
 	_, err = dupldra.IncRefCnt(ref.Id)
 	if err != nil {
@@ -96,7 +87,7 @@ func (dupldra *DuplDra) DuplicateWithId(oid string, dupId string, createDate tim
 	return util.GetDuplId(dupl.Id), nil
 }
 
-func (dupldra *DuplDra) saveRefAndDuplWithLock(pid string, size int64, domain int64) (*dra.Ref, error) {
+func (dupldra *DuplDra) saveRefAndDuplIfAbsent(pid string, size int64, domain int64) (*dra.Ref, error) {
 	ref, err := dupldra.LookupRefById(pid)
 	if err != nil {
 		return nil, err
@@ -104,9 +95,6 @@ func (dupldra *DuplDra) saveRefAndDuplWithLock(pid string, size int64, domain in
 	if ref != nil {
 		return ref, nil
 	}
-
-	dupldra.refLock.Lock()
-	defer dupldra.refLock.Unlock()
 
 	nref := &dra.Ref{
 		Id:     pid,
@@ -127,13 +115,6 @@ func (dupldra *DuplDra) saveRefAndDuplWithLock(pid string, size int64, domain in
 	}
 
 	return nref, nil
-}
-
-func (dupldra *DuplDra) lookupRefByIdWithLock(rid string) (*dra.Ref, error) {
-	dupldra.refLock.RLock()
-	defer dupldra.refLock.RUnlock()
-
-	return dupldra.LookupRefById(rid)
 }
 
 // LazyDelete deletes a duplication or a real file.
