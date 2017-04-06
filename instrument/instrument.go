@@ -99,6 +99,18 @@ var (
 	)
 	TimeoutHistogram = make(chan *Measurements, *metricsBufSize)
 
+	// grpcErrorByCode instruments grpc error by its code.
+	grpcErrorByCode = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "grpc_err",
+			Help:      "grpc error by code.",
+		},
+		[]string{"code"},
+	)
+	GrpcErrorByCode = make(chan *Measurements, *metricsBufSize)
+
 	// transferRate instruments rate of file transfer.
 	transferRate = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -260,6 +272,7 @@ func init() {
 	prometheus.MustRegister(backstoreFileCounter)
 	prometheus.MustRegister(mergedQuery)
 	prometheus.MustRegister(healthCheckStatus)
+	prometheus.MustRegister(grpcErrorByCode)
 }
 
 func StartMetrics() {
@@ -310,6 +323,8 @@ func StartMetrics() {
 					mergedQuery.WithLabelValues(m.Name).Observe(m.Value)
 				case m := <-HealthCheckStatus:
 					healthCheckStatus.WithLabelValues(m.Name, m.Biz).Inc()
+				case m := <-GrpcErrorByCode:
+					grpcErrorByCode.WithLabelValues(m.Name).Inc()
 				}
 			}
 		}()

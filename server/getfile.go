@@ -112,7 +112,8 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 				},
 			})
 			if err != nil {
-				glog.Warningf("GetFile, send to client error, %s, %v", req.Id, err)
+				_, desc := mf()
+				glog.Warningf("GetFile, send to client error %v, %s", err, desc)
 				return mf, err
 			}
 		}
@@ -127,7 +128,8 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 			return mf, nil
 		}
 		if err != nil {
-			glog.Warningf("GetFile, read source error, %s, %v", req.Id, err)
+			_, desc := mf()
+			glog.Warningf("GetFile, read source error %v, %s", err, desc)
 			return mf, err
 		}
 

@@ -65,9 +65,16 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 			cancel()
 		}
 
-		if se, ok := e.(transport.StreamError); ok && (se.Code == codes.DeadlineExceeded) || (e == context.DeadlineExceeded) {
-			instrument.TimeoutHistogram <- me
-			glog.Infof("%s, deadline exceeded, in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
+		e = tryToConvertToStreamError(e)
+		if se, ok := e.(transport.StreamError); ok {
+			instrument.GrpcErrorByCode <- &instrument.Measurements{
+				Name:  fmt.Sprintf("%d", se.Code),
+				Value: me.Value,
+			}
+			glog.Infof("%s error %v, in %.9f seconds, %s.", serviceName, se, elapse.Seconds(), <-msgChan)
+			if se.Code == codes.DeadlineExceeded || se.Code == codes.Canceled {
+				instrument.TimeoutHistogram <- me
+			}
 		} else if e != nil {
 			if e != fileop.FileNotFound {
 				instrument.FailedCounter <- me
@@ -143,6 +150,7 @@ func callBizFunc(f bizFunc, env interface{}, req interface{}, args []interface{}
 	if mf, ok := result.r.(msgFunc); ok {
 		result.r, result.desc = mf()
 	}
+
 	return
 }
 
@@ -199,4 +207,21 @@ func getStack() string {
 	stacks := make([]string, 0, len(stack))
 	stacks = append(stack[0:1], stack[7:]...)
 	return strings.Join(stacks, "\n")
+}
+
+func tryToConvertToStreamError(err error) error {
+	switch err {
+	case context.DeadlineExceeded:
+		return transport.StreamError{
+			Code: codes.DeadlineExceeded,
+			Desc: fmt.Sprintf("%v", err),
+		}
+	case context.Canceled:
+		return transport.StreamError{
+			Code: codes.Canceled,
+			Desc: fmt.Sprintf("%v", err),
+		}
+	default:
+		return err
+	}
 }
