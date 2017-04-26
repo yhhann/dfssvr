@@ -5,8 +5,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
+
+	"jingoal.com/dfs/instrument"
 )
 
 const (
@@ -70,6 +73,31 @@ func (op *SpaceLogOp) Close() {
 }
 
 func (op *SpaceLogOp) SaveSpaceLog(log *SpaceLog) error {
+	if *asyncEvent {
+		go func() {
+			instrument.AsyncSaving <- &instrument.Measurements{
+				Name:  "slog",
+				Value: 1,
+			}
+			defer func() {
+				instrument.AsyncSaving <- &instrument.Measurements{
+					Name:  "slog",
+					Value: -1,
+				}
+			}()
+
+			if err := op.saveSpaceLog(log); err != nil {
+				glog.Warningf("%s, error: %v", log.String(), err)
+			}
+		}()
+
+		return nil
+	}
+
+	return op.saveSpaceLog(log)
+}
+
+func (op *SpaceLogOp) saveSpaceLog(log *SpaceLog) error {
 	if string(log.Id) == "" {
 		log.Id = bson.NewObjectId()
 	}

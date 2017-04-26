@@ -41,6 +41,17 @@ var (
 	)
 	InProcess = make(chan *Measurements, *metricsBufSize)
 
+	asyncSavingGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "async_saving",
+			Help:      "Event in async saving.",
+		},
+		[]string{"service"},
+	)
+	AsyncSaving = make(chan *Measurements, *metricsBufSize)
+
 	// sucLatencyGauge instruments duration of method called successfully.
 	sucLatencyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -255,6 +266,7 @@ var (
 
 func init() {
 	prometheus.MustRegister(inProcessGauge)
+	prometheus.MustRegister(asyncSavingGauge)
 	prometheus.MustRegister(sucLatency)
 	prometheus.MustRegister(sucLatencyGauge)
 	prometheus.MustRegister(failCounter)
@@ -283,6 +295,8 @@ func StartMetrics() {
 				case m := <-InProcess:
 					inProcessGauge.WithLabelValues(m.Name).Add(m.Value)
 					inProcessTotal.Add(m.Value)
+				case m := <-AsyncSaving:
+					asyncSavingGauge.WithLabelValues(m.Name).Add(m.Value)
 				case m := <-FailedCounter:
 					failCounter.WithLabelValues(m.Name).Inc()
 				case m := <-NoDeadlineCounter:

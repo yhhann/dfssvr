@@ -1,12 +1,15 @@
 package metadata
 
 import (
+	"flag"
 	"fmt"
 	"strings"
 
+	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
+	"jingoal.com/dfs/instrument"
 	"jingoal.com/dfs/proto/transfer"
 )
 
@@ -27,6 +30,10 @@ const (
 
 const (
 	EVENT_COL = "event" // event collection name
+)
+
+var (
+	asyncEvent = flag.Bool("async-event-saving", true, "save event asynchronously.")
 )
 
 type EventType uint
@@ -104,6 +111,32 @@ func (op *EventOp) Close() {
 // SaveEvent saves an event into database.
 // If id of the saved object is nil, it will be set to a new ObjectId.
 func (op *EventOp) SaveEvent(e *Event) error {
+	if *asyncEvent {
+		go func() {
+			instrument.AsyncSaving <- &instrument.Measurements{
+				Name:  "event",
+				Value: 1,
+			}
+			defer func() {
+				instrument.AsyncSaving <- &instrument.Measurements{
+					Name:  "event",
+					Value: -1,
+				}
+			}()
+
+			if err := op.saveEvent(e); err != nil {
+				// log into file instead of return.
+				glog.Warningf("%s, error: %v", e.String(), err)
+			}
+		}()
+
+		return nil
+	}
+
+	return op.saveEvent(e)
+}
+
+func (op *EventOp) saveEvent(e *Event) error {
 	if string(e.Id) == "" {
 		e.Id = bson.NewObjectId()
 	}
