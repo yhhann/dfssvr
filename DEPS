@@ -12,6 +12,10 @@ deps {
     version: HEAD
   }
   repo {
+    name: "bld_tools/docker/glusterfs"
+    version: HEAD
+  }
+  repo {
     name: "seaweedfs-adaptor"
     version: HEAD
   }
