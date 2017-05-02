@@ -26,13 +26,13 @@ go_binary(
 )
 
 docker_build(
-    name = "dfssvr-img",
-    base = "//:base",
+    name = "latest",
+    base = "//bld_tools/docker/glusterfs:base",
     cmd = "/dfs/bin/start.sh",
     directory = "/dfs/bin",
     files = [
-        "start.sh",
         ":dfssvr",
+        "start.sh",
     ],
     workdir = "/dfs",
 )
