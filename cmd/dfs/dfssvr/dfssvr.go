@@ -16,6 +16,7 @@ import (
 	"jingoal.com/dfs/proto/discovery"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/server"
+	"jingoal.com/letsgo"
 	jgrpc "jingoal.com/letsgo/grpc"
 )
 
@@ -84,7 +85,7 @@ func init() {
 
 // This is a DFSServer instance.
 func main() {
-	flag.Parse()
+	letsgo.Init()
 	checkFlags()
 
 	logFlags()
