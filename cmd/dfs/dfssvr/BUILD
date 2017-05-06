@@ -1,6 +1,6 @@
 package(default_visibility = ["//dfs:__subpackages__"])
 
-load("@bazel_tools//tools/build_defs/docker:docker.bzl", "docker_build")
+load("@io_bazel_rules_docker//docker:docker.bzl", "docker_build")
 load("@io_bazel_rules_go//go:def.bzl", "go_binary")
 
 go_binary(
@@ -27,12 +27,14 @@ go_binary(
 
 docker_build(
     name = "latest",
-    base = "//bld_tools/docker/glusterfs:base",
-    cmd = "/dfs/bin/start.sh",
+    base = "//bld_tools/docker/glusterfs:latest",
+    repository = "harbor.eff.com",
+    tag = "dfs/server",
     directory = "/dfs/bin",
     files = [
         ":dfssvr",
         "start.sh",
     ],
     workdir = "/dfs",
+    cmd = "/dfs/bin/start.sh",
 )
