@@ -311,28 +311,33 @@ func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
 
 // IsHealthy checks whether shard is ok.
 func (h *GlusterHandler) IsHealthy() bool {
+	return h.HealthStatus() == HealthOk
+}
+
+// HealthStatus returns the status of node health.
+func (h *GlusterHandler) HealthStatus() int {
 	if err := h.session.Ping(); err != nil {
-		return false
+		return MetaNotHealthy
 	}
 
 	magicDirPath := filepath.Join(h.VolBase, "health", transfer.ServerId)
 	if err := h.Volume.MkdirAll(magicDirPath, 0755); err != nil {
 		glog.Warningf("IsHealthy error: %v", err)
-		return false
+		return StoreNotHealthy
 	}
 
 	fn := strconv.Itoa(int(time.Now().Unix()))
 	magicFilePath := filepath.Join(magicDirPath, fn)
 	if _, err := h.Volume.Create(magicFilePath); err != nil {
 		glog.Warningf("IsHealthy error: %v", err)
-		return false
+		return StoreNotHealthy
 	}
 	if err := h.Volume.Unlink(magicFilePath); err != nil {
 		glog.Warningf("IsHealthy error: %v", err)
-		return false
+		return StoreNotHealthy
 	}
 
-	return true
+	return HealthOk
 }
 
 // FindByMd5 finds a file by its md5.

@@ -72,6 +72,11 @@ func (h *DegradeHandler) IsHealthy() bool {
 	return h.fh.IsHealthy()
 }
 
+// HealthStatus returns the status of node health.
+func (h *DegradeHandler) HealthStatus() int {
+	return h.HealthStatus()
+}
+
 // FindByMd5 finds a file by its md5.
 func (h *DegradeHandler) FindByMd5(md5 string, domain int64, size int64) (string, error) {
 	return h.fh.FindByMd5(md5, domain, size)

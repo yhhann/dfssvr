@@ -14,6 +14,12 @@ const (
 	FileModeRead                          // For read only
 )
 
+const (
+	HealthOk int = iota
+	MetaNotHealthy
+	StoreNotHealthy
+)
+
 type DFSFileMeta struct {
 	Bizname   string `bson:"bizname"`
 	Fid       string `bson:"weedfid"`
@@ -61,6 +67,9 @@ type DFSFileHandler interface {
 
 	// IsHealthy checks whether shard is ok.
 	IsHealthy() bool
+
+	// HealthStatus returns the status of node health.
+	HealthStatus() int
 
 	// FindByMd5 finds a file by its md5.
 	FindByMd5(md5 string, domain int64, size int64) (string, error)

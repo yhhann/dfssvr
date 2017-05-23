@@ -522,29 +522,28 @@ func findPerfectSegment(segments []*metadata.Segment, domain int64) (int, *metad
 // healthCheck detects a handler for its health.
 // If detection times out, return false.
 func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
-	running := make(chan bool, 1)
+	healthStatus := make(chan int, 1)
 	ticker := time.NewTicker(time.Duration(*HealthCheckTimeout) * time.Second)
 	defer func() {
 		ticker.Stop()
 	}()
 
 	go func() {
-		running <- handler.IsHealthy()
-		close(running)
+		healthStatus <- handler.HealthStatus()
+		close(healthStatus)
 	}()
 
 	select {
-	case result := <-running:
-		status := NewHandlerStatus(result)
-		if status != statusOk {
-			glog.Warningf("check handler %v %s", handler.Name(), status.String())
+	case status := <-healthStatus:
+		if status != fileop.HealthOk {
+			glog.Warningf("check handler %v %d", handler.Name(), status)
 		}
 		instrument.HealthCheckStatus <- &instrument.Measurements{
 			Name:  handler.Name(),
-			Biz:   status.String(),
+			Biz:   fmt.Sprintf("%d", status),
 			Value: 1.0,
 		}
-		return status
+		return NewHandlerStatus(status == fileop.HealthOk)
 	case <-ticker.C:
 		glog.Warningf("check handler %v expired", handler.Name())
 		instrument.HealthCheckStatus <- &instrument.Measurements{

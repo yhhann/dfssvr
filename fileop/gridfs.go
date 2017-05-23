@@ -213,7 +213,16 @@ func (h *GridFsHandler) Close() error {
 
 // IsHealthy checks whether shard is ok.
 func (h *GridFsHandler) IsHealthy() bool {
-	return h.session.Ping() == nil
+	return h.HealthStatus() == HealthOk
+}
+
+// HealthStatus returns the status of node health.
+func (h *GridFsHandler) HealthStatus() int {
+	if h.session.Ping() != nil {
+		return MetaNotHealthy
+	}
+
+	return HealthOk
 }
 
 // FindByMd5 finds a file by its md5.
