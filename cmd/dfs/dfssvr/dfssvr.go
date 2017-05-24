@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -35,18 +34,12 @@ var (
 	logFlushInterval = flag.Uint("log-flush-interval", 10, "interval of glog print in second.")
 	compress         = flag.Bool("compress", false, "compressing transfer file")
 	concurrency      = flag.Uint("concurrency", 0, "Concurrency")
-	version          = flag.Bool("version", false, "print version")
 
 	VERSION   = "2.0"
 	buildTime = ""
 )
 
 func checkFlags() {
-	if *version {
-		fmt.Printf("server version: %s-%s\n", VERSION, buildTime)
-		os.Exit(0)
-	}
-
 	if *serverId == "" {
 		glog.Exit("Error: flag --server-name is required.")
 	}
