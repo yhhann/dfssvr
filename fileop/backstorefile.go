@@ -182,7 +182,7 @@ func (bsh *BackStoreHandler) IsHealthy() bool {
 
 // HealthStatus returns the status of node health.
 func (bsh *BackStoreHandler) HealthStatus() int {
-	return bsh.HealthStatus()
+	return bsh.DFSFileHandler.HealthStatus()
 }
 
 // FindByMd5 finds a file by its md5.
