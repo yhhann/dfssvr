@@ -44,6 +44,9 @@ func (k *DfsZK) connectZk(addrs []string, timeout time.Duration) error {
 	go k.checkConnectEvent(ch, connectOk)
 	<-connectOk
 	k.Conn = thisConn
+
+	k.ensurePathExist(filepath.Dir(ShardDfsPath))
+
 	return nil
 }
 
@@ -78,6 +81,7 @@ func (k *DfsZK) CheckChildren(path string) (<-chan []string, <-chan error) {
 	snapshots := make(chan []string)
 	errors := make(chan error)
 
+	k.ensurePathExist(path)
 	go func() {
 		for {
 			snapshot, _, events, err := k.ChildrenW(path)
@@ -105,7 +109,9 @@ func (k *DfsZK) CheckDataChange(path string) (<-chan []byte, <-chan error) {
 	datas := make(chan []byte)
 	errors := make(chan error)
 
+	k.ensurePathExist(path)
 	go func() {
+
 		for {
 			dataBytes, _, events, err := k.GetW(path)
 			if err != nil {
@@ -194,6 +200,26 @@ func (k *DfsZK) Register(prefix string, data []byte, startCheckRoutine bool) (st
 		errors <- err
 	}
 	return path, results, errors, clearFlag, sendFlag
+}
+
+func (k *DfsZK) ensurePathExist(path string) error {
+	if exists, _, _ := k.Exists(path); exists {
+		return nil
+	}
+	_, err := k.Create(path, []byte(filepath.Base(path)), 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		glog.Infof("Ensure zk node %s, %v.", path, err)
+		if err == zk.ErrNodeExists {
+			return nil
+		}
+		if err == zk.ErrNotEmpty {
+			return nil
+		}
+		return err
+	}
+	glog.Infof("Zk node %s ensured.", path)
+
+	return nil
 }
 
 // NewDfsZK creates a new DfsZk.
