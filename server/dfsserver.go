@@ -41,6 +41,21 @@ var (
 	AssertionError = errors.New("assertion error")
 )
 
+var (
+	shardAddr *DBAddr
+)
+
+// DBAddr represents a bundle of mongodb addresses, including
+// the address of shard, event and space log.
+type DBAddr struct {
+	ShardDbName string
+	ShardDbUri  string
+	EventDbName string
+	EventDbUri  string
+	SlogDbName  string
+	SlogDbUri   string
+}
+
 // DFSServer implements DiscoveryServiceServer and FileTransferServer.
 type DFSServer struct {
 	mOp      metadata.MetaOp
@@ -127,15 +142,6 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 	return nil
 }
 
-type DBAddr struct {
-	ShardDbName string
-	ShardDbUri  string
-	EventDbName string
-	EventDbUri  string
-	SlogDbName  string
-	SlogDbUri   string
-}
-
 // NewDFSServer creates a DFSServer
 //
 // example:
@@ -157,6 +163,8 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string,
 	r := disc.NewZKDfsServerRegister(zk)
 	server.register = r
 	server.notice = zk
+
+	shardAddr = dbAddr
 
 	conf.NewConf(confPath, prefixOfDFSServer, name, zk)
 

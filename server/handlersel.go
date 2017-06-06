@@ -124,9 +124,9 @@ func (hs *HandlerSelector) deleteHandler(handlerName string) {
 
 		sh.Shutdown()
 		hs.delShardHandler(handlerName)
-	}
 
-	glog.Infof("Succeeded to delete handler, shard: %s", handlerName)
+		glog.Infof("Succeeded to delete handler, shard: %s", handlerName)
+	}
 }
 
 func inferShardType(shard *metadata.Shard) {
@@ -194,7 +194,7 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 
 	hs.addRecovery(handler.Name(), sh.recoveryChan)
 
-	glog.Infof("Succeeded to create handler, shard: %s", shard.Name)
+	glog.Infof("Succeeded to create handler, shard: %s, type %d.", shard.Name, shard.ShdType)
 }
 
 // getDfsFileHandler returns perfect file handlers to process file.
@@ -338,7 +338,6 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 				segmentName := string(v)
 				domain, err := strconv.Atoi(segmentName)
 				if err != nil {
-					glog.Warningf("Failed to convert segment number %s, error %v", segmentName, err)
 					break
 				}
 
@@ -423,7 +422,53 @@ func (hs *HandlerSelector) backfillSegment() {
 	defer hs.segmentLock.Unlock()
 
 	hs.segments = hs.dfsServer.mOp.FindAllSegmentsOrderByDomain()
+}
+
+func (hs *HandlerSelector) backfillShard() {
+	// Initialize storage servers
+	shards := hs.dfsServer.mOp.FindAllShards()
+
+	// Check storage servers to ensure that there's a shard at least.
+	if len(shards) == 0 && len(hs.segments) == 0 {
+		shards = append(shards, &metadata.Shard{
+			Age:     1, // seq no
+			Name:    shardAddr.ShardDbName,
+			Uri:     shardAddr.ShardDbUri,
+			ShdType: metadata.Gridgo,
+		})
+
+		hs.segments = append(hs.segments, &metadata.Segment{
+			Domain:        1, // from 1 to infinity.
+			MigrateServer: "",
+			NormalServer:  shardAddr.ShardDbName,
+		})
+
+		glog.Infof("Succeeded to backfill shard with '%s'.", shardAddr.ShardDbName)
+	} else {
+		glog.Infof("Succeeded to backfill shard %d.", len(shards))
+	}
+
+	for _, shard := range shards {
+		if shard.ShdType == metadata.BackstoreServer {
+			hs.backStoreShard = shard
+			break
+		}
+	}
+
+	for _, shard := range shards {
+		if shard.ShdType == metadata.BackstoreServer {
+			continue
+		}
+		hs.addHandler(shard)
+	}
+}
+
+func (hs *HandlerSelector) showSegments() {
 	glog.Infof("Succeeded to backfill segment %d.", len(hs.segments))
+	for _, seg := range hs.segments {
+		glog.Infof("Segment: [Domain:%d, ns:%s, ms:%s]",
+			seg.Domain, seg.NormalServer, seg.MigrateServer)
+	}
 }
 
 // FindPerfectSegment finds a perfect segment for domain.
@@ -445,27 +490,11 @@ func NewHandlerSelector(dfsServer *DFSServer) (*HandlerSelector, error) {
 
 	// Fill segment data.
 	hs.backfillSegment()
-	for _, seg := range hs.segments {
-		glog.Infof("Segment: [Domain:%d, ns:%s, ms:%s]",
-			seg.Domain, seg.NormalServer, seg.MigrateServer)
-	}
 
-	// Initialize storage servers
-	shards := hs.dfsServer.mOp.FindAllShards()
+	// Fill shard data.
+	hs.backfillShard()
 
-	for _, shard := range shards {
-		if shard.ShdType == metadata.BackstoreServer {
-			hs.backStoreShard = shard
-			break
-		}
-	}
-
-	for _, shard := range shards {
-		if shard.ShdType == metadata.BackstoreServer {
-			continue
-		}
-		hs.addHandler(shard)
-	}
+	hs.showSegments()
 
 	return hs, nil
 }
