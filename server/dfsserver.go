@@ -246,11 +246,7 @@ func sanitizeLsnAddr(lsnAddr string) (string, error) {
 		lstPort = ss[len(ss)-1]
 	}
 
-	var registerIp string
-	ip := net.ParseIP(ss[0])
-	if ip != nil && ip.To4() != nil {
-		registerIp = ss[0]
-	}
+	registerIp := ss[0]
 
 	if registerIp == "" {
 		lstIps, err := getIfcAddr()
