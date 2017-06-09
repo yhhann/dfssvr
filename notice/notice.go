@@ -7,6 +7,9 @@ type Notice interface {
 	// when its children changed.
 	CheckChildren(path string) (<-chan []string, <-chan error)
 
+	// GetChildren gets the name of children under the given path.
+	GetChildren(path string) ([]string, error)
+
 	// CheckDataChange checks the path, returned chan will be noticed
 	// when its data changed.
 	CheckDataChange(path string) (<-chan []byte, <-chan error)

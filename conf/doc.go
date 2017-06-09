@@ -1,7 +1,9 @@
 package conf
 
-// We use zookeeper to store the flag value, and update value of the flag
-// once there is a changing of the value stored in zookeeper.
+// We store flag values in zookeeper.
+// Firstly, flags are populated with parameters when start up,
+// and then populated again from zookeeper by conf,
+// at last, every time any change happens, flags are updated.
 
 // For example, declaring a flag such as:
 // var testFlag = flag.Int("test-flag", 10, "test flag usage.")

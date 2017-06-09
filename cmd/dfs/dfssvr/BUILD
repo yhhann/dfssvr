@@ -14,7 +14,9 @@ go_binary(
         "main.buildTime": "2016/06/30_00:00",
     },
     deps = [
+        "//dfs/conf:go_default_library",
         "//dfs/instrument:go_default_library",
+        "//dfs/notice:go_default_library",
         "//dfs/proto/discovery:go_default_library",
         "//dfs/proto/transfer:go_default_library",
         "//dfs/server:go_default_library",

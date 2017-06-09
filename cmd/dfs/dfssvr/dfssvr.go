@@ -5,13 +5,16 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/golang/glog"
 	"google.golang.org/grpc"
 
+	"jingoal.com/dfs/conf"
 	"jingoal.com/dfs/instrument"
+	"jingoal.com/dfs/notice"
 	"jingoal.com/dfs/proto/discovery"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/server"
@@ -24,7 +27,7 @@ var (
 
 	lsnAddr          = flag.String("listen-addr", ":10000", "listen address")
 	zkAddr           = flag.String("zk-addr", "127.0.0.1:2181", "zookeeper address")
-	timeout          = flag.Uint("zk-timeout", 15000, "zookeeper timeout")
+	zkTimeout        = flag.Uint("zk-timeout", 15000, "zookeeper timeout")
 	shardDbName      = flag.String("shard-name", "shard", "shard database name")
 	shardDbUri       = flag.String("shard-dburi", "mongodb://127.0.0.1:27017", "shard database uri")
 	eventDbName      = flag.String("event-dbname", "dfsevent", "event database name")
@@ -79,9 +82,13 @@ func init() {
 // This is a DFSServer instance.
 func main() {
 	letsgo.Init()
-	checkFlags()
+
+	zk := notice.NewDfsZK(strings.Split(*zkAddr, ","), time.Duration(*zkTimeout)*time.Millisecond)
+	conf.NewConf(conf.DfssvrConfPath, conf.DfssvrPrefix, *serverId, zk)
 
 	logFlags()
+
+	checkFlags()
 
 	go flushLogDaemon()
 	defer glog.Flush()
@@ -110,7 +117,7 @@ func main() {
 	var dfsServer *server.DFSServer
 	for {
 		transfer.ServerId = *serverId
-		dfsServer, err = server.NewDFSServer(lis.Addr(), *serverId, dbAddr, *zkAddr, *timeout)
+		dfsServer, err = server.NewDFSServer(lis.Addr(), *serverId, dbAddr, zk)
 		if err != nil {
 			glog.Warningf("Failed to create DFS Server: %v, try again.", err)
 			time.Sleep(time.Duration(*server.HealthCheckInterval) * time.Second)

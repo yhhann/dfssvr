@@ -75,6 +75,18 @@ func (k *DfsZK) checkConnectEvent(ch <-chan zk.Event, okChan chan<- struct{}) {
 	}
 }
 
+// GetChildren gets the name of children under the given path.
+func (k *DfsZK) GetChildren(path string) ([]string, error) {
+	k.ensurePathExist(path)
+
+	result, _, err := k.Children(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 // CheckChildren sets a watcher on given path,
 // the returned chan will be noticed when children changed.
 func (k *DfsZK) CheckChildren(path string) (<-chan []string, <-chan error) {

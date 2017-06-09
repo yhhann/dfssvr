@@ -7,24 +7,17 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/peer"
 
-	"jingoal.com/dfs/conf"
 	disc "jingoal.com/dfs/discovery"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/notice"
 	"jingoal.com/dfs/proto/discovery"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/recovery"
-)
-
-const (
-	confPath          = "/shard/conf"
-	prefixOfDFSServer = "dfs.svr."
 )
 
 var (
@@ -147,26 +140,22 @@ func (s *DFSServer) registerSelf(lsnAddr string, name string) error {
 // example:
 //  lsnAddr, _ := ResolveTCPAddr("tcp", ":10000")
 //  dfsServer, err := NewDFSServer(lsnAddr, "mySite", "shard",
-//         "mongodb://192.168.1.15:27017", "192.168.1.16:2181", 3)
-func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zkAddrs string, zkTimeout uint) (server *DFSServer, err error) {
+//         "mongodb://192.168.1.15:27017", zk)
+func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zk *notice.DfsZK) (server *DFSServer, err error) {
 	glog.Infof("Try to start DFS server %v on %v\n", name, lsnAddr.String())
 
-	server = new(DFSServer)
+	shardAddr = dbAddr
+	server = &DFSServer{
+		notice:   zk,
+		register: disc.NewZKDfsServerRegister(zk),
+	}
+
 	defer func() {
 		if err != nil && server != nil {
 			server.Close()
 			server = nil
 		}
 	}()
-
-	zk := notice.NewDfsZK(strings.Split(zkAddrs, ","), time.Duration(zkTimeout)*time.Millisecond)
-	r := disc.NewZKDfsServerRegister(zk)
-	server.register = r
-	server.notice = zk
-
-	shardAddr = dbAddr
-
-	conf.NewConf(confPath, prefixOfDFSServer, name, zk)
 
 	spaceOp, err := metadata.NewSpaceLogOp(dbAddr.SlogDbName, dbAddr.SlogDbUri)
 	if err != nil {

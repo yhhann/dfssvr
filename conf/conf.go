@@ -12,6 +12,9 @@ import (
 
 const (
 	confBufSize = 10000
+
+	DfssvrConfPath = "/shard/conf"
+	DfssvrPrefix   = "dfs.svr."
 )
 
 // Conf holds the config for flag.
@@ -21,11 +24,17 @@ type Conf struct {
 	confPath string
 }
 
+// KV holds a key and it's value.
+type KV struct {
+	k string
+	v string
+}
+
 func (conf *Conf) startConfUpdateRoutine() {
 	routineMap := make(map[string]interface{})
 	changes, errs := conf.notice.CheckChildren(conf.confPath)
 
-	kvs := make(chan string, confBufSize)
+	kvs := make(chan *KV, confBufSize)
 	go func() {
 		for {
 			select {
@@ -43,7 +52,10 @@ func (conf *Conf) startConfUpdateRoutine() {
 							for {
 								select {
 								case v := <-vc:
-									kvs <- filepath.Join(strings.TrimPrefix(cn, conf.prefix), string(v))
+									kvs <- &KV{
+										k: strings.TrimPrefix(cn, conf.prefix),
+										v: string(v),
+									}
 								case e := <-ec:
 									if e == zk.ErrNoNode {
 										glog.V(3).Infof("%v, %s, watcher routine stopped.", e, cn)
@@ -67,13 +79,34 @@ func (conf *Conf) startConfUpdateRoutine() {
 
 	go func() {
 		for {
-			pair := <-kvs
-			kv := strings.Split(pair, "/")
-			if len(kv) >= 2 {
-				update(kv[0], kv[1])
-			}
+			kv := <-kvs
+			update(kv.k, kv.v)
 		}
 	}()
+}
+
+func (conf *Conf) initConf() {
+	children, err := conf.notice.GetChildren(conf.confPath)
+	if err != nil {
+		glog.Warningf("Failed to init conf %v.", err)
+		return
+	}
+
+	for _, confName := range children {
+		// filetered by prefix.
+		if !strings.HasPrefix(confName, conf.prefix) {
+			continue
+		}
+
+		path := filepath.Join(conf.confPath, confName)
+		confByte, err := conf.notice.GetData(path)
+		if err != nil {
+			glog.Warningf("%v", err)
+			continue
+		}
+
+		update(strings.TrimPrefix(confName, conf.prefix), string(confByte))
+	}
 }
 
 func NewConf(confPath string, prefix string, nodeName string, notice notice.Notice) *Conf {
@@ -83,6 +116,7 @@ func NewConf(confPath string, prefix string, nodeName string, notice notice.Noti
 		prefix:   prefix,
 		notice:   notice,
 	}
+	conf.initConf()
 	conf.startConfUpdateRoutine()
 	return conf
 }

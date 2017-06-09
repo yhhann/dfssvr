@@ -103,7 +103,7 @@ func updatePrivate(key string, value string) {
 func UpdateFlagValue(key string, value string) {
 	if f, ok := flagMap[key]; ok {
 		f.Value.Set(value)
-		glog.Infof("Succeeded to update flag %s to value %s", key, value)
+		glog.Infof("Update flag:\t%s->%s\n", key, value)
 		return
 	}
 
