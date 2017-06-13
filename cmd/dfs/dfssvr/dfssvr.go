@@ -18,8 +18,9 @@ import (
 	"jingoal.com/dfs/proto/discovery"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/server"
-	"jingoal.com/letsgo"
 	jgrpc "jingoal.com/letsgo/grpc"
+	jrt "jingoal.com/letsgo/runtime"
+	jver "jingoal.com/letsgo/version"
 )
 
 var (
@@ -81,7 +82,9 @@ func init() {
 
 // This is a DFSServer instance.
 func main() {
-	letsgo.Init()
+	flag.Parse()
+	jrt.EnableGoroutineDump()
+	jver.PrintGlog()
 
 	zk := notice.NewDfsZK(strings.Split(*zkAddr, ","), time.Duration(*zkTimeout)*time.Millisecond)
 	conf.NewConf(conf.DfssvrConfPath, conf.DfssvrPrefix, *serverId, zk)
