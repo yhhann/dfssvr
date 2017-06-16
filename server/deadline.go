@@ -1,6 +1,7 @@
 package server
 
 import (
+	"flag"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -14,6 +15,11 @@ import (
 
 	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/instrument"
+)
+
+var (
+	logElapseThreshold = flag.Duration("log-elapse-threshold", time.Second, "Elapse threshold for log.")
+	logLevelThreshold  = flag.Int("log-level-threshold", 3, "Level threshold for log.")
 )
 
 // msgFunc represents function which returns an interface
@@ -81,11 +87,19 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 				glog.Infof("%s error %v, in %.9f seconds, %s.", serviceName, e, elapse.Seconds(), <-msgChan)
 			} else {
 				instrument.SuccessDuration <- me
-				glog.Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
+				if elapse > *logElapseThreshold {
+					glog.Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
+				} else {
+					glog.V(glog.Level(*logLevelThreshold)).Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
+				}
 			}
 		} else {
 			instrument.SuccessDuration <- me
-			glog.Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
+			if elapse > *logElapseThreshold {
+				glog.Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
+			} else {
+				glog.V(glog.Level(*logLevelThreshold)).Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
+			}
 		}
 
 		exit(serviceName)
