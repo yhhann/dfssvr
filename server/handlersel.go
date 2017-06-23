@@ -302,7 +302,7 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 	s := hs.dfsServer
 	go func() {
 		data, errs := s.notice.CheckDataChange(notice.ShardServerPath)
-		glog.Infof("Succeeded to start routine for checking shard servers.")
+		glog.Infof("A routine is ready to update shard.")
 
 		for {
 			select {
@@ -330,7 +330,7 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 
 	go func() {
 		data, errs := s.notice.CheckDataChange(notice.ShardChunkPath)
-		glog.Infof("Succeeded to start routine for checking segment.")
+		glog.Infof("A routine is ready to update segment.")
 
 		for {
 			select {
@@ -366,7 +366,7 @@ func (hs *HandlerSelector) startRevoveryDispatchRoutine() {
 	go func() {
 		ticker := time.NewTicker(time.Duration(*recoveryInterval) * time.Second)
 		defer ticker.Stop()
-		glog.Infof("Succeeded to start routine for recovery dispatch.")
+		glog.Infof("A routine is ready for recovery dispatch.")
 
 		for {
 			select {

@@ -92,7 +92,7 @@ func (r *ZKDfsServerRegister) Register(s *discovery.DfsServer) error {
 						ob <- struct{}{}
 					}
 				}()
-				glog.Infof("Succeeded to fire online notice %d.", len(r.observers))
+				glog.Infof("Succeeded to notify observers %d.", len(r.observers))
 
 			case changedServer := <-data: // Get changed server and update serverMap.
 				server := new(discovery.DfsServer)

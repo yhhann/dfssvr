@@ -258,7 +258,7 @@ func (h *GlustraHandler) HealthStatus() int {
 	// TODO(hanyh): check cassandra?
 
 	magicDirPath := filepath.Join(h.VolBase, "health", transfer.ServerId)
-	if err := h.Volume.MkdirAll(magicDirPath, 0755); err != nil {
+	if err := h.Volume.MkdirAll(magicDirPath, 0755); err != nil && os.IsExist(err) {
 		glog.Warningf("IsHealthy error: %v", err)
 		return StoreNotHealthy
 	}
