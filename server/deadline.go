@@ -161,7 +161,7 @@ func callBizFunc(f bizFunc, env interface{}, req interface{}, args []interface{}
 		result.e = err
 	}
 
-	if mf, ok := result.r.(msgFunc); ok {
+	if mf, ok := result.r.(msgFunc); ok && mf != nil {
 		result.r, result.desc = mf()
 	}
 
