@@ -259,18 +259,18 @@ func (h *GlustraHandler) HealthStatus() int {
 
 	magicDirPath := filepath.Join(h.VolBase, "health", transfer.ServerId)
 	if err := h.Volume.MkdirAll(magicDirPath, 0755); err != nil && os.IsExist(err) {
-		glog.Warningf("IsHealthy error: %v", err)
+		glog.Warningf("IsHealthy %s, error: %v", h.Name(), err)
 		return StoreNotHealthy
 	}
 
 	fn := strconv.Itoa(int(time.Now().Unix()))
 	magicFilePath := filepath.Join(magicDirPath, fn)
 	if _, err := h.Volume.Create(magicFilePath); err != nil {
-		glog.Warningf("IsHealthy error: %v", err)
+		glog.Warningf("IsHealthy %s, error: %v", h.Name(), err)
 		return StoreNotHealthy
 	}
 	if err := h.Volume.Unlink(magicFilePath); err != nil {
-		glog.Warningf("IsHealthy error: %v", err)
+		glog.Warningf("IsHealthy %s, error: %v", h.Name(), err)
 		return StoreNotHealthy
 	}
 
