@@ -214,7 +214,7 @@ func (h *GlustraHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileIn
 func (h *GlustraHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
 	result, entityId, err := h.duplfs.LazyDelete(id)
 	if err != nil {
-		glog.Warningf("Failed to remove file %s %d, error: %s", id, domain, err)
+		glog.Warningf("Failed to remove file %s %d, %s.", id, domain, err)
 		return false, nil, err
 	}
 
@@ -228,7 +228,7 @@ func (h *GlustraHandler) Remove(id string, domain int64) (bool, *FileMeta, error
 
 		filePath := util.GetFilePath(h.VolBase, domain, entityId, h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
-			glog.Warningf("Failed to remove file %s %d from %s", id, domain, filePath)
+			glog.Warningf("Failed to remove file %s %d from %s, %s.", id, domain, filePath, err)
 		}
 	}
 
