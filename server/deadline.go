@@ -3,6 +3,7 @@ package server
 import (
 	"flag"
 	"fmt"
+	"os"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -38,13 +39,40 @@ type streamFunc func(interface{}, interface{}, []interface{}) (msgFunc, error)
 
 // withStreamDeadline processes a stream grpc calling with deadline.
 func (f streamFunc) withStreamDeadline(serviceName string, req interface{}, stream interface{}, args ...interface{}) error {
+	var err error
+
+	defer func() {
+		if err != nil {
+			// TODO(hanyh): remove the debug code.
+			switch e := err.(type) {
+			case *os.PathError:
+				if e.Err != nil {
+					glog.Infof("%s, path error: %s.", serviceName, e.Error())
+				} else {
+					glog.Infof("%s, path error: %s, %s.", serviceName, e.Op, e.Path)
+				}
+			case *os.SyscallError:
+				if e.Err != nil {
+					glog.Infof("%s, path error: %s.", serviceName, e.Error())
+				} else {
+					glog.Infof("%s, path error: %s.", serviceName, e.Syscall)
+				}
+			}
+			// End of debug code.
+
+			// Trigger the panic if any.
+			// The triggered panic will be recovered by GRPC interceptor.
+			err.Error()
+		}
+	}()
+
 	if grpcStream, ok := stream.(grpc.Stream); ok {
-		_, err := bizFunc(streamBizFunc).withDeadline(serviceName, grpcStream, req, f, args)
+		_, err = bizFunc(streamBizFunc).withDeadline(serviceName, grpcStream, req, f, args)
 
 		return err
 	}
 
-	_, err := f(req, stream, args)
+	_, err = f(req, stream, args)
 	return err
 }
 
