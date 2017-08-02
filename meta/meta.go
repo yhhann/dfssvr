@@ -35,11 +35,11 @@ type FileMetaOp interface {
 	Save(*File) error
 
 	// FindByMd5 looks up the metadata of a file by its md5 and domain.
-	FineByMd5(md5 string, domain int64) (*File, error)
+	FindByMd5(md5 string, domain int64) (*File, error)
 
 	// DuplicateWithId duplicates a given file by its fid.
-	DuplicateWithId(fid string, did string, createDate time.Timer) (string, error)
+	DuplicateWithId(fid string, did string, createDate time.Time) (string, error)
 
 	// Delete deletes a file.
-	Delete(find string) (tobeDeleted bool, entityIdToBeDeleted string, err error)
+	Delete(fid string) (tobeDeleted bool, entityIdToBeDeleted string, err error)
 }
