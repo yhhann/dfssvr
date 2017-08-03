@@ -6,7 +6,7 @@ go_library(
     name = "go_default_library",
     srcs = glob(
         ["*.go"],
-        exclude = ["*_test.go"],
+        exclude = ["*_test.go", "mock_*.go"],
     ),
     deps = [
         "//dfs/meta:go_default_library",
@@ -17,4 +17,3 @@ go_library(
         "//third-party-go/vendor/gopkg.in/mgo.v2/bson:go_default_library",
     ],
 )
-
