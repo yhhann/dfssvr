@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gocql/gocql"
 	"gopkg.in/mgo.v2/bson"
 )
 
@@ -155,8 +154,8 @@ func TestRc(t *testing.T) {
 	}
 }
 
-func newMetaOp() *MetaOp {
-	return NewMetaOp("127.0.0.1", "", "", "dfs", gocql.One, 600*time.Millisecond, 2)
+func newMetaOp() *DraOpImpl {
+	return NewDraOpImpl([]string{"127.0.0.1"})
 }
 
 func BenchmarkFile(b *testing.B) {

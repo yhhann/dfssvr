@@ -8,6 +8,7 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/util"
 )
@@ -269,13 +270,25 @@ type FileMeta struct {
 	Biz    string "bizname"
 }
 
-func LookupFileMeta(gridfs *mgo.GridFS, query bson.D) (*FileMeta, error) {
+func LookupFileMeta(gridfs *mgo.GridFS, query bson.D) (*meta.File, error) {
 	iter := gridfs.Find(query).Sort("-uploadDate").Iter()
 	defer iter.Close()
 
 	fm := new(FileMeta)
 	if iter.Next(fm) {
-		return fm, nil
+		if oid, ok := fm.Id.(bson.ObjectId); ok {
+			return &meta.File{
+				Id:         oid.Hex(),
+				Biz:        fm.Biz,
+				Md5:        fm.MD5,
+				Name:       fm.Filename,
+				UserId:     fm.UserId,
+				ChunkSize:  fm.ChunkSize,
+				UploadDate: fm.UploadDate,
+				Size:       fm.Length,
+				Domain:     fm.Domain,
+			}, nil
+		}
 	}
 
 	return nil, FileNotFound

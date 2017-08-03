@@ -4,6 +4,7 @@ package fileop
 import (
 	"io"
 
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/proto/transfer"
 )
 
@@ -52,7 +53,7 @@ type DFSFileHandler interface {
 	Duplicate(oid string) (string, error)
 
 	// Remove deletes a file by its id.
-	Remove(id string, domain int64) (bool, *FileMeta, error)
+	Remove(id string, domain int64) (bool, *meta.File, error)
 
 	// Close releases resources the handler holds.
 	Close() error

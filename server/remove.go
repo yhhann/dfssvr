@@ -7,9 +7,9 @@ import (
 
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
-	"gopkg.in/mgo.v2/bson"
 
 	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/util"
@@ -84,7 +84,7 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 	}
 
 	var p fileop.DFSFileHandler
-	var fm *fileop.FileMeta
+	var fm *meta.File
 
 	nh, mh, err := s.selector.getDFSFileHandlerForRead(req.Domain)
 	if err != nil {
@@ -106,16 +106,12 @@ func (s *DFSServer) removeBiz(c interface{}, r interface{}, args []interface{}) 
 
 	// space log.
 	if err == nil && result {
-		fid, ok := fm.Id.(bson.ObjectId)
-		if !ok {
-			return mf, fmt.Errorf("Invalid id, %T, %v", fm.Id, fm.Id)
-		}
 		slog := &metadata.SpaceLog{
+			Fid:       fm.Id,
 			Domain:    fm.Domain,
 			Uid:       fm.UserId,
-			Fid:       fid.Hex(),
 			Biz:       fm.Biz,
-			Size:      fm.Length,
+			Size:      fm.Size,
 			Timestamp: time.Now(),
 			Type:      metadata.DeleteType.String(),
 		}
@@ -160,11 +156,11 @@ type DeleteResult struct {
 	merr    error
 	nresult bool
 	mresult bool
-	nMeta   *fileop.FileMeta
-	mMeta   *fileop.FileMeta
+	nMeta   *meta.File
+	mMeta   *meta.File
 }
 
-func (dr *DeleteResult) result() (bool, *fileop.FileMeta, error) {
+func (dr *DeleteResult) result() (bool, *meta.File, error) {
 	if dr.nerr != nil && dr.merr != nil {
 		return false, nil, fmt.Errorf("%v,%v", dr.nerr, dr.merr)
 	}

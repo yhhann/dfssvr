@@ -7,6 +7,7 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 )
@@ -178,7 +179,7 @@ func (h *GridFsHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileInf
 }
 
 // Remove deletes a file with its id and domain.
-func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
+func (h *GridFsHandler) Remove(id string, domain int64) (bool, *meta.File, error) {
 	session, gridfs := h.copySessionAndGridFS()
 	defer func() {
 		h.ensureReleaseSession(session)
@@ -190,7 +191,7 @@ func (h *GridFsHandler) Remove(id string, domain int64) (bool, *FileMeta, error)
 		return false, nil, err
 	}
 
-	var m *FileMeta
+	var m *meta.File
 	if result {
 		query := bson.D{
 			{"_id", *entityId},

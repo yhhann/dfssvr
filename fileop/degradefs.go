@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/glog"
 
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/recovery"
 )
@@ -58,7 +59,7 @@ func (h *DegradeHandler) Find(fid string) (string, *DFSFileMeta, *transfer.FileI
 }
 
 // Remove deletes a file with its id and domain.
-func (h *DegradeHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
+func (h *DegradeHandler) Remove(id string, domain int64) (bool, *meta.File, error) {
 	return h.fh.Remove(id, domain)
 }
 

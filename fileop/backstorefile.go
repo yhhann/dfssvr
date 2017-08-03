@@ -8,6 +8,7 @@ import (
 
 	"jingoal.com/dfs/conf"
 	"jingoal.com/dfs/instrument"
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/seaweedfs-adaptor/weedfs"
@@ -117,7 +118,7 @@ func (bsh *BackStoreHandler) Open(id string, domain int64) (DFSFile, error) {
 }
 
 // Remove deletes a file by its id.
-func (bsh *BackStoreHandler) Remove(id string, domain int64) (bool, *FileMeta, error) {
+func (bsh *BackStoreHandler) Remove(id string, domain int64) (bool, *meta.File, error) {
 	_, meta, _, err := bsh.DFSFileHandler.Find(id)
 	if err != nil {
 		return true, nil, nil

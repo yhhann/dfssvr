@@ -40,7 +40,8 @@ const (
 )
 
 var (
-	FileNotFound = errors.New("file not found")
+	FileNotFound      = errors.New("file not found")
+	FileAlreadyExists = errors.New("file already exists")
 )
 
 // Type of storage which stores file content.
@@ -76,7 +77,7 @@ type Ref struct {
 	RefCnt int64  `cql:"refcnt"`
 }
 
-type MetaOp struct {
+type DraOpImpl struct {
 	*gocql.ClusterConfig
 
 	session *gocql.Session
@@ -84,7 +85,7 @@ type MetaOp struct {
 }
 
 // SaveDupl saves a dupl.
-func (op *MetaOp) SaveDupl(dupl *Dupl) error {
+func (op *DraOpImpl) SaveDupl(dupl *Dupl) error {
 	if len(dupl.Id) == 0 {
 		dupl.Id = bson.NewObjectId().Hex()
 	}
@@ -99,7 +100,7 @@ func (op *MetaOp) SaveDupl(dupl *Dupl) error {
 }
 
 // LookupDuplById looks up a dupl by its id.
-func (op *MetaOp) LookupDuplById(id string) (*Dupl, error) {
+func (op *DraOpImpl) LookupDuplById(id string) (*Dupl, error) {
 	dupl := &Dupl{}
 	err := op.execute(func(session *gocql.Session) error {
 		q := session.Query(cqlLookupDuplById, id)
@@ -118,7 +119,7 @@ func (op *MetaOp) LookupDuplById(id string) (*Dupl, error) {
 }
 
 // LookupDuplByRefid looks up a dupl by its ref id. No use right now.
-func (op *MetaOp) LookupDuplByRefid(rid string) []*Dupl {
+func (op *DraOpImpl) LookupDuplByRefid(rid string) []*Dupl {
 	result := make([]*Dupl, 0, 10)
 
 	op.execute(func(session *gocql.Session) error {
@@ -141,14 +142,14 @@ func (op *MetaOp) LookupDuplByRefid(rid string) []*Dupl {
 }
 
 // RemoveDupl removes a dupl by its id.
-func (op *MetaOp) RemoveDupl(id string) error {
+func (op *DraOpImpl) RemoveDupl(id string) error {
 	return op.execute(func(session *gocql.Session) error {
 		return session.Query(cqlRemoveDupl, id).Exec()
 	})
 }
 
 // SaveRef saves a reference.
-func (op *MetaOp) SaveRef(ref *Ref) error {
+func (op *DraOpImpl) SaveRef(ref *Ref) error {
 	if len(ref.Id) == 0 {
 		return errors.New("id of ref is nil.")
 	}
@@ -157,7 +158,7 @@ func (op *MetaOp) SaveRef(ref *Ref) error {
 }
 
 // LookupRefById looks up a ref by its id.
-func (op *MetaOp) LookupRefById(id string) (*Ref, error) {
+func (op *DraOpImpl) LookupRefById(id string) (*Ref, error) {
 	ref := &Ref{}
 	err := op.execute(func(session *gocql.Session) error {
 		q := session.Query(cqlLookupRefById, id)
@@ -180,14 +181,14 @@ func (op *MetaOp) LookupRefById(id string) (*Ref, error) {
 }
 
 // RemoveRef removes a ref by its id.
-func (op *MetaOp) RemoveRef(id string) error {
+func (op *DraOpImpl) RemoveRef(id string) error {
 	return op.execute(func(session *gocql.Session) error {
 		return session.Query(cqlRemoveRef, id).Exec()
 	})
 }
 
 // IncRefCnt increases reference count.
-func (op *MetaOp) IncRefCnt(id string) (*Ref, error) {
+func (op *DraOpImpl) IncRefCnt(id string) (*Ref, error) {
 	r, err := op.LookupRefById(id)
 	if err != nil {
 		return nil, err
@@ -207,7 +208,7 @@ func (op *MetaOp) IncRefCnt(id string) (*Ref, error) {
 }
 
 // DecRefCnt decreases reference count.
-func (op *MetaOp) DecRefCnt(id string) (*Ref, error) {
+func (op *DraOpImpl) DecRefCnt(id string) (*Ref, error) {
 	r, err := op.LookupRefById(id)
 	if err != nil {
 		return nil, err
@@ -226,7 +227,7 @@ func (op *MetaOp) DecRefCnt(id string) (*Ref, error) {
 	return op.LookupRefById(id)
 }
 
-func (op *MetaOp) addRefCnt(id string, delta int) error {
+func (op *DraOpImpl) addRefCnt(id string, delta int) error {
 	query := fmt.Sprintf(cqlUpdateRefCnt, delta)
 	return op.execute(func(session *gocql.Session) error {
 		return session.Query(query, id).Consistency(gocql.All).Exec()
@@ -234,7 +235,7 @@ func (op *MetaOp) addRefCnt(id string, delta int) error {
 }
 
 // LookupFileById looks up a file by its id.
-func (op *MetaOp) LookupFileById(id string) (*File, error) {
+func (op *DraOpImpl) LookupFileById(id string) (*File, error) {
 	f := &File{}
 	err := op.execute(func(session *gocql.Session) error {
 		q := session.Query(cqlLookupFileById, id)
@@ -258,7 +259,7 @@ func (op *MetaOp) LookupFileById(id string) (*File, error) {
 }
 
 // LookupFileByMd5 looks up a file by its md5.
-func (op *MetaOp) LookupFileByMd5(md5 string, domain int64) (*File, error) {
+func (op *DraOpImpl) LookupFileByMd5(md5 string, domain int64) (*File, error) {
 	f := &File{}
 	err := op.execute(func(session *gocql.Session) error {
 		q := session.Query(calLookupFileByMd5, md5)
@@ -286,7 +287,7 @@ func (op *MetaOp) LookupFileByMd5(md5 string, domain int64) (*File, error) {
 }
 
 // SaveFile saves a file.
-func (op *MetaOp) SaveFile(f *File) error {
+func (op *DraOpImpl) SaveFile(f *File) error {
 	if f.Type == EntityNone {
 		return errors.New("File type unknown.")
 	}
@@ -298,7 +299,7 @@ func (op *MetaOp) SaveFile(f *File) error {
 }
 
 // RemoveFile removes a file by its id.
-func (op *MetaOp) RemoveFile(id string) error {
+func (op *DraOpImpl) RemoveFile(id string) error {
 	return op.execute(func(session *gocql.Session) error {
 		return session.Query(cqlRemoveFile, id).Exec()
 	})
@@ -306,7 +307,7 @@ func (op *MetaOp) RemoveFile(id string) error {
 
 // getSession returns a cql session.
 // It makes dfs server can start before cassandra.
-func (op *MetaOp) getSession() (*gocql.Session, error) {
+func (op *DraOpImpl) getSession() (*gocql.Session, error) {
 	if op.session != nil {
 		return op.session, nil
 	}
@@ -324,7 +325,7 @@ func (op *MetaOp) getSession() (*gocql.Session, error) {
 	return op.session, err
 }
 
-func (op *MetaOp) execute(target func(session *gocql.Session) error) error {
+func (op *DraOpImpl) execute(target func(session *gocql.Session) error) error {
 	session, err := op.getSession()
 	if err != nil {
 		return err
@@ -333,10 +334,10 @@ func (op *MetaOp) execute(target func(session *gocql.Session) error) error {
 	return target(session)
 }
 
-// NewMetaOp returns a MetaOp object with given parameters.
-func NewMetaOp(seeds []string, sqlOptions ...func(*MetaOp)) *MetaOp {
+// NewDraOpImpl returns a DraOpImpl object with given parameters.
+func NewDraOpImpl(seeds []string, sqlOptions ...func(*DraOpImpl)) *DraOpImpl {
 	// TODO(hanyh): Consider re-use letsgo/cql/conf to create cluster.
-	self := &MetaOp{
+	self := &DraOpImpl{
 		ClusterConfig: gocql.NewCluster(seeds...),
 	}
 

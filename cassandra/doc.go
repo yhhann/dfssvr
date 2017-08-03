@@ -3,3 +3,7 @@
 // stores file metadatas in cassandra.
 
 package cassandra
+
+// Usage of unit test.
+// To run unit test of this package:
+// go test -v jingoal.com/dfs/cassandra -run ^TestDra.*$

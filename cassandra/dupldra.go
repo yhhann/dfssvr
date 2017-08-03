@@ -1,40 +1,50 @@
-package fileop
+package cassandra
 
 import (
 	"time"
 
 	"github.com/golang/glog"
-	"gopkg.in/mgo.v2/bson"
 
-	dra "jingoal.com/dfs/cassandra"
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/util"
 )
 
 // DuplDra processes operations about file duplication.
 // The file duplication metadata is stored in cassandra.
 type DuplDra struct {
-	*dra.MetaOp
+	DraOp
+}
+
+// Save saves the metadata of a file.
+func (dupldra *DuplDra) Save(f *meta.File) error {
+	draFile := DraFile(f)
+	return dupldra.SaveFile(draFile)
 }
 
 // FindByMd5 finds a file by its md5.
-func (dupldra *DuplDra) FindByMd5(md5 string, domain int64) (*dra.File, error) {
-	return dupldra.LookupFileByMd5(md5, domain)
-}
-
-// Find finds a file with given id.
-func (dupldra *DuplDra) Find(givenId string) (f *dra.File, err error) {
-	f, err = dupldra.search(givenId)
+func (dupldra *DuplDra) FindByMd5(md5 string, domain int64) (*meta.File, error) {
+	f, err := dupldra.LookupFileByMd5(md5, domain)
 	if err != nil {
 		return nil, err
 	}
-	if f == nil {
+
+	return MetaFile(f), nil
+}
+
+// Find finds a file with given id.
+func (dupldra *DuplDra) Find(fid string) (*meta.File, error) {
+	draFile, err := dupldra.search(fid)
+	if err != nil {
+		return nil, err
+	}
+	if draFile == nil {
 		return nil, FileNotFound
 	}
 
-	return f, nil
+	return MetaFile(draFile), nil
 }
 
-func (dupldra *DuplDra) search(givenId string) (*dra.File, error) {
+func (dupldra *DuplDra) search(givenId string) (*File, error) {
 	if !util.IsDuplId(givenId) {
 		return dupldra.LookupFileById(givenId)
 	}
@@ -52,13 +62,13 @@ func (dupldra *DuplDra) search(givenId string) (*dra.File, error) {
 }
 
 // Duplicate duplicates an entry for a file, not the content.
-func (dupldra *DuplDra) Duplicate(oid string) (string, error) {
-	return dupldra.DuplicateWithId(oid, "", time.Time{})
+func (dupldra *DuplDra) Duplicate(fid string) (string, error) {
+	return dupldra.DuplicateWithId(fid, "", time.Time{})
 }
 
 // DuplicateWithId duplicates an entry for a file with given file id, not the content.
-func (dupldra *DuplDra) DuplicateWithId(oid string, dupId string, createDate time.Time) (string, error) {
-	primary, err := dupldra.search(oid)
+func (dupldra *DuplDra) DuplicateWithId(fid string, dupId string, createDate time.Time) (string, error) {
+	primary, err := dupldra.search(fid)
 	if err != nil {
 		return "", err
 	}
@@ -72,7 +82,7 @@ func (dupldra *DuplDra) DuplicateWithId(oid string, dupId string, createDate tim
 		return "", err
 	}
 
-	dupl := dra.Dupl{
+	dupl := Dupl{
 		Id:         dupId,
 		Ref:        ref.Id,
 		Length:     primary.Size,
@@ -87,7 +97,7 @@ func (dupldra *DuplDra) DuplicateWithId(oid string, dupId string, createDate tim
 	return util.GetDuplId(dupl.Id), nil
 }
 
-func (dupldra *DuplDra) saveRefAndDuplIfAbsent(pid string, size int64, domain int64) (*dra.Ref, error) {
+func (dupldra *DuplDra) saveRefAndDuplIfAbsent(pid string, size int64, domain int64) (*Ref, error) {
 	ref, err := dupldra.LookupRefById(pid)
 	if err != nil {
 		return nil, err
@@ -96,7 +106,7 @@ func (dupldra *DuplDra) saveRefAndDuplIfAbsent(pid string, size int64, domain in
 		return ref, nil
 	}
 
-	nref := &dra.Ref{
+	nref := &Ref{
 		Id:     pid,
 		RefCnt: 0,
 	}
@@ -104,7 +114,7 @@ func (dupldra *DuplDra) saveRefAndDuplIfAbsent(pid string, size int64, domain in
 		return nil, err
 	}
 
-	dupl := &dra.Dupl{
+	dupl := &Dupl{
 		Id:     pid,
 		Ref:    nref.Id,
 		Length: size,
@@ -117,10 +127,10 @@ func (dupldra *DuplDra) saveRefAndDuplIfAbsent(pid string, size int64, domain in
 	return nref, nil
 }
 
-// LazyDelete deletes a duplication or a real file.
+// Delete deletes a duplication or a real file.
 // It returns true when deletes a real file successfully.
-func (dupldra *DuplDra) LazyDelete(dId string) (bool, string, error) {
-	realId := util.GetRealId(dId)
+func (dupldra *DuplDra) Delete(fid string) (bool, string, error) {
+	realId := util.GetRealId(fid)
 
 	dupl, err := dupldra.LookupDuplById(realId)
 	if err != nil {
@@ -128,7 +138,7 @@ func (dupldra *DuplDra) LazyDelete(dId string) (bool, string, error) {
 	}
 
 	if dupl == nil {
-		return dupldra.delFile(dId, realId)
+		return dupldra.delFile(fid, realId)
 	}
 
 	return dupldra.delFileAndDupl(dupl)
@@ -152,7 +162,7 @@ func (dupldra *DuplDra) delFile(did string, entityId string) (bool, string, erro
 	return false, "", nil
 }
 
-func (dupldra *DuplDra) delFileAndDupl(dupl *dra.Dupl) (bool, string, error) {
+func (dupldra *DuplDra) delFileAndDupl(dupl *Dupl) (bool, string, error) {
 	err := dupldra.RemoveDupl(dupl.Id)
 	if err != nil {
 		return false, "", err
@@ -186,27 +196,17 @@ func (dupldra *DuplDra) decAndRemove(id string) (int64, error) {
 	return ref.RefCnt, nil
 }
 
-func (dupldra *DuplDra) LookupFileMeta(id string) (*FileMeta, error) {
+func (dupldra *DuplDra) LookupFileMeta(id string) (*meta.File, error) {
 	f, err := dupldra.LookupFileById(id)
 	if err != nil {
 		return nil, err
 	}
 
-	return &FileMeta{
-		Id:         bson.ObjectIdHex(f.Id),
-		ChunkSize:  f.ChunkSize,
-		UploadDate: f.UploadDate,
-		Length:     f.Size,
-		MD5:        f.Md5,
-		Filename:   f.Name,
-		Domain:     f.Domain,
-		UserId:     f.UserId,
-		Biz:        f.Biz,
-	}, nil
+	return MetaFile(f), nil
 }
 
-func NewDuplDra(metaOp *dra.MetaOp) *DuplDra {
+func NewDuplDra(draOp DraOp) *DuplDra {
 	return &DuplDra{
-		MetaOp: metaOp,
+		DraOp: draOp,
 	}
 }
