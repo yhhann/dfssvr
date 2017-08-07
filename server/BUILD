@@ -10,6 +10,7 @@ go_library(
     "//dfs/discovery:go_default_library",
     "//dfs/fileop:go_default_library",
     "//dfs/instrument:go_default_library",
+    "//dfs/meta:go_default_library",
     "//dfs/metadata:go_default_library",
     "//dfs/notice:go_default_library",
     "//dfs/proto/discovery:go_default_library",

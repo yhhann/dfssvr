@@ -9,6 +9,7 @@ go_library(
     "//dfs/cassandra:go_default_library",
     "//dfs/conf:go_default_library",
     "//dfs/instrument:go_default_library",
+    "//dfs/meta:go_default_library",
     "//dfs/metadata:go_default_library",
     "//dfs/proto/transfer:go_default_library",
     "//dfs/recovery:go_default_library",
