@@ -94,7 +94,6 @@ func (s *DFSServer) putFileStream(r interface{}, grpcStream interface{}, args []
 
 			file, handler, err = s.createFile(reqInfo, stream, startTime)
 			if err != nil {
-				glog.Warningf("PutFile error, create file %v, error %v", reqInfo, err)
 				return mf, err
 			}
 			defer func() {

@@ -3,7 +3,6 @@ package server
 import (
 	"flag"
 	"fmt"
-	"os"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -43,22 +42,24 @@ func (f streamFunc) withStreamDeadline(serviceName string, req interface{}, stre
 
 	defer func() {
 		if err != nil {
-			// TODO(hanyh): remove the debug code.
-			switch e := err.(type) {
-			case *os.PathError:
-				if e.Err != nil {
-					glog.Infof("%s, path error: %s.", serviceName, e.Error())
-				} else {
-					glog.Infof("%s, path error: %s, %s.", serviceName, e.Op, e.Path)
+			// TODO(hanyh): remove the commented code.
+			/*
+				switch e := err.(type) {
+				case *os.PathError:
+					if e.Err != nil {
+						glog.Infof("%s, path error: %s.", serviceName, e.Error())
+					} else {
+						glog.Infof("%s, path error: %s, %s.", serviceName, e.Op, e.Path)
+					}
+				case *os.SyscallError:
+					if e.Err != nil {
+						glog.Infof("%s, path error: %s.", serviceName, e.Error())
+					} else {
+						glog.Infof("%s, path error: %s.", serviceName, e.Syscall)
+					}
 				}
-			case *os.SyscallError:
-				if e.Err != nil {
-					glog.Infof("%s, path error: %s.", serviceName, e.Error())
-				} else {
-					glog.Infof("%s, path error: %s.", serviceName, e.Syscall)
-				}
-			}
-			// End of debug code.
+				// End of debug code.
+			*/
 
 			// Trigger the panic if any.
 			// The triggered panic will be recovered by GRPC interceptor.

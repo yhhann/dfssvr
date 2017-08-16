@@ -37,7 +37,8 @@ func openFile(id string, domain int64, nh fileop.DFSFileHandler, mh fileop.DFSFi
 		f, err := nh.Open(id, domain)
 		return nh, f, err
 	}
-	return nil, nil, fmt.Errorf("get file error: normal site is nil")
+
+	return nil, nil, fmt.Errorf("no normal site")
 }
 
 func (s *DFSServer) findFileForRead(id string, domain int64) (fileop.DFSFileHandler, string, *transfer.FileInfo, error) {
@@ -70,5 +71,6 @@ func findFile(id string, nh fileop.DFSFileHandler, mh fileop.DFSFileHandler) (fi
 		fid, _, info, err := nh.Find(id)
 		return nh, fid, info, err
 	}
-	return nil, "", nil, fmt.Errorf("get file error: normal site is nil")
+
+	return nil, "", nil, fmt.Errorf("no normal site")
 }

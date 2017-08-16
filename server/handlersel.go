@@ -3,6 +3,7 @@ package server
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -110,7 +111,15 @@ func (hs *HandlerSelector) getShardHandler(handlerName string) (*ShardHandler, b
 func (hs *HandlerSelector) updateHandler(shard *metadata.Shard, op int) {
 	switch op {
 	case 1:
-		hs.addHandler(shard)
+		for {
+			err := hs.addHandler(shard)
+			if err == nil {
+				break
+			}
+			t := time.Duration(15+rand.Intn(10)) * time.Second
+			glog.Infof("Retry to start handler '%s' after %v.", shard.Name, t)
+			time.Sleep(t)
+		}
 	case 2:
 		hs.deleteHandler(shard.Name)
 	}
@@ -141,9 +150,8 @@ func inferShardType(shard *metadata.Shard) {
 	}
 }
 
-func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
+func (hs *HandlerSelector) addHandler(shard *metadata.Shard) (err error) {
 	var handler fileop.DFSFileHandler
-	var err error
 
 	inferShardType(shard)
 
@@ -161,8 +169,8 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 	default:
 		err = fmt.Errorf("invalid shard type")
 	}
-	if err != nil {
-		glog.Warningf("Failed to create handler, shard: %v, error: %v", shard, err)
+	if err != nil || handler == nil {
+		glog.Warningf("Failed to create handler, shard: %s, type: %d, error: %v", shard.Name, shard.ShdType, err)
 		return
 	}
 
@@ -195,6 +203,8 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) {
 	hs.addRecovery(handler.Name(), sh.recoveryChan)
 
 	glog.Infof("Succeeded to create handler, shard: %s, type %d.", shard.Name, shard.ShdType)
+
+	return
 }
 
 // getDfsFileHandler returns perfect file handlers to process file.
@@ -207,12 +217,12 @@ func (hs *HandlerSelector) getDFSFileHandler(domain int64) (*fileop.DFSFileHandl
 
 	seg := hs.FindPerfectSegment(domain)
 	if seg == nil {
-		return nil, nil, fmt.Errorf("can not find perfect server, domain %d", domain)
+		return nil, nil, fmt.Errorf("no perfect server, domain %d", domain)
 	}
 
 	n, ok := hs.getShardHandler(seg.NormalServer)
 	if !ok {
-		return nil, nil, fmt.Errorf("no normal site, seg: %v", seg)
+		return nil, nil, fmt.Errorf("no normal site '%s'", seg.NormalServer)
 	}
 
 	m, ok := hs.getShardHandler(seg.MigrateServer)
@@ -314,14 +324,14 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 						shard := &metadata.Shard{
 							Name: serverName,
 						}
-						hs.updateHandler(shard, 2 /* delete handler */)
+						go hs.updateHandler(shard, 2 /* delete handler */)
 						break
 					}
 					glog.Warningf("Failed to lookup shard %s, error: %v", serverName, err)
 					break
 				}
 
-				hs.updateHandler(shard, 1 /* add handler */)
+				go hs.updateHandler(shard, 1 /* add handler */)
 			case err := <-errs:
 				glog.Warningf("Failed to process shard notice, error: %v", err)
 			}
@@ -455,11 +465,32 @@ func (hs *HandlerSelector) backfillShard() {
 		}
 	}
 
+	var wg sync.WaitGroup
 	for _, shard := range shards {
 		if shard.ShdType == metadata.BackstoreServer {
 			continue
 		}
-		hs.addHandler(shard)
+
+		wg.Add(1)
+		go func(shd *metadata.Shard) {
+			hs.updateHandler(shd, 1 /* add handler */)
+			wg.Done()
+		}(shard)
+	}
+
+	handlerOver := make(chan struct{})
+	go func() {
+		wg.Wait()
+		handlerOver <- struct{}{}
+	}()
+
+	glog.Infof("Initializing handlers for one minutes.")
+	ticker := time.Tick(time.Second * 20)
+	select {
+	case <-handlerOver:
+		glog.Infof("All handlers initialized ok!")
+	case <-ticker:
+		glog.Infof("Handlers initialize timeout.........")
 	}
 }
 
