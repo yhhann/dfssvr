@@ -31,13 +31,13 @@ go_binary(
 docker_build(
     name = "latest",
     base = "//bld_tools/docker/glusterfs:latest",
-    repository = "harbor.eff.com",
-    tag = "dfs/server",
+    cmd = "/dfs/bin/start.sh",
     directory = "/dfs/bin",
     files = [
-        ":dfssvr",
         "start.sh",
+        ":dfssvr",
     ],
+    repository = "harbor.eff.com",
+    tag = "dfs/server",
     workdir = "/dfs",
-    cmd = "/dfs/bin/start.sh",
 )
