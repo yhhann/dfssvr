@@ -251,6 +251,17 @@ var (
 	)
 	BackstoreFileCounter = make(chan *Measurements, *metricsBufSize)
 
+	minorFileCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "minor_file_counter",
+			Help:      "Minor file counter",
+		},
+		[]string{"service"},
+	)
+	MinorFileCounter = make(chan *Measurements, *metricsBufSize)
+
 	mergedQuery = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "dfs2_0",
@@ -282,6 +293,7 @@ func init() {
 	prometheus.MustRegister(prejudgeExceedCounter)
 	prometheus.MustRegister(flagGauge)
 	prometheus.MustRegister(backstoreFileCounter)
+	prometheus.MustRegister(minorFileCounter)
 	prometheus.MustRegister(mergedQuery)
 	prometheus.MustRegister(healthCheckStatus)
 	prometheus.MustRegister(grpcErrorByCode)
@@ -333,6 +345,8 @@ func StartMetrics() {
 					flagGauge.WithLabelValues(m.Name).Set(m.Value)
 				case m := <-BackstoreFileCounter:
 					backstoreFileCounter.WithLabelValues(m.Name).Inc()
+				case m := <-MinorFileCounter:
+					minorFileCounter.WithLabelValues(m.Name).Inc()
 				case m := <-MergedQuery:
 					mergedQuery.WithLabelValues(m.Name).Observe(m.Value)
 				case m := <-HealthCheckStatus:

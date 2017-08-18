@@ -102,7 +102,7 @@ func (s *DFSServer) duplicate(oid string, domain int64) (string, error) {
 	}
 
 	// duplicate file from proper handler.
-	did, err := h.Duplicate(oid)
+	did, err := h.Duplicate(oid, domain)
 	if err != nil {
 		return "", err
 	}

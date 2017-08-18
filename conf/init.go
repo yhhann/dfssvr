@@ -13,6 +13,11 @@ const (
 func init() {
 	features = make(map[string]*FeatureFlag)
 
+	initBackStoreFlag()
+	initTeeFlag()
+}
+
+func initBackStoreFlag() {
 	PutFlag(&FeatureFlag{
 		Key:        FlagKeyBackStore,
 		Enabled:    false,

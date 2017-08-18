@@ -217,7 +217,7 @@ func (h *GlusterHandler) Open(id string, domain int64) (f DFSFile, err error) {
 }
 
 // Duplicate duplicates an entry for a file.
-func (h *GlusterHandler) Duplicate(oid string) (string, error) {
+func (h *GlusterHandler) Duplicate(oid string, domain int64) (string, error) {
 	return h.duplfs.Duplicate(h.gridfs, oid)
 }
 
@@ -308,11 +308,6 @@ func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
 		handler: h,
 		meta:    make(map[string]interface{}),
 	}, nil
-}
-
-// IsHealthy checks whether shard is ok.
-func (h *GlusterHandler) IsHealthy() bool {
-	return h.HealthStatus() == HealthOk
 }
 
 // HealthStatus returns the status of node health.

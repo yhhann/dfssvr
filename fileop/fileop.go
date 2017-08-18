@@ -50,28 +50,35 @@ type DFSFileHandler interface {
 	Open(id string, domain int64) (DFSFile, error)
 
 	// Duplicate duplicates an entry for a file.
-	Duplicate(oid string) (string, error)
+	Duplicate(oid string, domain int64) (string, error)
 
 	// Remove deletes a file by its id.
 	Remove(id string, domain int64) (bool, *meta.File, error)
-
-	// Close releases resources the handler holds.
-	Close() error
 
 	// Find finds a file, if the file not exists, return empty string.
 	// If the file exists, return its file id.
 	// If the file exists and is a duplication, return its primitive file id.
 	Find(fid string) (string, *DFSFileMeta, *transfer.FileInfo, error)
 
+	// FindByMd5 finds a file by its md5.
+	FindByMd5(md5 string, domain int64, size int64) (string, error)
+
 	// Name returns handler's name.
 	Name() string
-
-	// IsHealthy checks whether shard is ok.
-	IsHealthy() bool
 
 	// HealthStatus returns the status of node health.
 	HealthStatus() int
 
-	// FindByMd5 finds a file by its md5.
-	FindByMd5(md5 string, domain int64, size int64) (string, error)
+	// Close releases resources the handler holds.
+	Close() error
+}
+
+type DFSFileMinorHandler interface {
+	DFSFileHandler
+
+	// Create creates a DFSFile with the given id.
+	CreateWithGivenId(info *transfer.FileInfo) (DFSFile, error)
+
+	// Duplicate duplicates an entry with the given id.
+	DuplicateWithGivenId(primaryId string, dupId string) (string, error)
 }

@@ -26,7 +26,7 @@ CREATE TABLE files (
 	fn text,
 	udate timestamp,
 	uid text,
-	m map<text, text>,
+	attrs map<text, text>,
 	type tinyint,
 	PRIMARY KEY(id)
 );

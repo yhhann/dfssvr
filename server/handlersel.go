@@ -59,6 +59,7 @@ type HandlerSelector struct {
 	dfsServer *DFSServer
 
 	backStoreShard *metadata.Shard
+	minorHandler   fileop.DFSFileMinorHandler
 }
 
 func (hs *HandlerSelector) addRecovery(name string, rInfo chan *FileRecoveryInfo) {
@@ -184,6 +185,11 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) (err error) {
 		hs.degradeShardHandler = NewShardHandler(dh, statusOk, hs)
 		glog.Infof("Succeeded to create degrade handler, shard: %s", shard.Name)
 		return
+	}
+
+	if hs.minorHandler != nil {
+		handler = fileop.NewTeeHandler(handler, hs.minorHandler)
+		glog.Infof("Succeeded to attach handler %s with minor server %s", handler.Name(), hs.minorHandler.Name())
 	}
 
 	if hs.backStoreShard != nil {
@@ -458,16 +464,35 @@ func (hs *HandlerSelector) backfillShard() {
 		glog.Infof("Succeeded to backfill shard %d.", len(shards))
 	}
 
-	for _, shard := range shards {
-		if shard.ShdType == metadata.BackstoreServer {
-			hs.backStoreShard = shard
-			break
+	if *fileop.TeeEnable {
+		for _, shard := range shards {
+			if shard.ShdType > metadata.MinorServer {
+				h, err := hs.createMinorHandler(shard)
+				if err != nil {
+					glog.Warningf("Failed to create minor handler %s, %v.", shard.Name, err)
+					continue
+				}
+
+				hs.minorHandler = h
+				glog.Infof("Succeeded to create minor handler %s, type %d.", h.Name(), shard.ShdType)
+				break
+			}
+		}
+	}
+
+	if hs.minorHandler == nil {
+		for _, shard := range shards {
+			if shard.ShdType == metadata.BackstoreServer {
+				hs.backStoreShard = shard
+				glog.Infof("Succeeded to create back store handler %s.", shard.Name)
+				break
+			}
 		}
 	}
 
 	var wg sync.WaitGroup
 	for _, shard := range shards {
-		if shard.ShdType == metadata.BackstoreServer {
+		if shard.ShdType == metadata.BackstoreServer || shard.ShdType > metadata.MinorServer {
 			continue
 		}
 
@@ -481,7 +506,7 @@ func (hs *HandlerSelector) backfillShard() {
 	handlerOver := make(chan struct{})
 	go func() {
 		wg.Wait()
-		handlerOver <- struct{}{}
+		close(handlerOver)
 	}()
 
 	glog.Infof("Initializing handlers for one minutes.")
@@ -492,6 +517,19 @@ func (hs *HandlerSelector) backfillShard() {
 	case <-ticker:
 		glog.Infof("Handlers initialize timeout.........")
 	}
+}
+
+func (hs *HandlerSelector) createMinorHandler(shard *metadata.Shard) (handler fileop.DFSFileMinorHandler, err error) {
+	shd := *shard
+	shd.ShdType -= metadata.MinorServer
+
+	switch shd.ShdType {
+	case metadata.Glustra:
+		handler, err = fileop.NewGlustraHandler(&shd, filepath.Join(*logDir, shd.Name))
+	default:
+		err = fmt.Errorf("invalid shard type")
+	}
+	return
 }
 
 func (hs *HandlerSelector) showSegments() {

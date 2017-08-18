@@ -83,7 +83,7 @@ func (dupldra *DuplDra) DuplicateWithId(fid string, dupId string, createDate tim
 	}
 
 	dupl := Dupl{
-		Id:         dupId,
+		Id:         util.GetRealId(dupId),
 		Ref:        ref.Id,
 		Length:     primary.Size,
 		Domain:     primary.Domain,

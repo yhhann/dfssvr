@@ -47,8 +47,8 @@ func (h *DegradeHandler) Open(id string, domain int64) (DFSFile, error) {
 }
 
 // Duplicate duplicates an entry for a file.
-func (h *DegradeHandler) Duplicate(oid string) (string, error) {
-	return h.fh.Duplicate(oid)
+func (h *DegradeHandler) Duplicate(oid string, domain int64) (string, error) {
+	return h.fh.Duplicate(oid, domain)
 }
 
 // Find finds a file, if the file not exists, return empty string.
@@ -66,11 +66,6 @@ func (h *DegradeHandler) Remove(id string, domain int64) (bool, *meta.File, erro
 // Close releases resources the handler holds.
 func (h *DegradeHandler) Close() error {
 	return h.fh.Close()
-}
-
-// IsHealthy checks whether shard is ok.
-func (h *DegradeHandler) IsHealthy() bool {
-	return h.fh.IsHealthy()
 }
 
 // HealthStatus returns the status of node health.

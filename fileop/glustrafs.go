@@ -99,6 +99,9 @@ func (h *GlustraHandler) Close() error {
 // Create creates a DFSFile for write.
 func (h *GlustraHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 	oid := bson.NewObjectId()
+	if bson.IsObjectIdHex(info.Id) {
+		oid = bson.ObjectIdHex(info.Id)
+	}
 
 	filePath := util.GetFilePath(h.VolBase, info.Domain, oid.Hex(), h.PathVersion, h.PathDigit)
 	dir := filepath.Dir(filePath)
@@ -118,7 +121,7 @@ func (h *GlustraHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 		UserId:    fmt.Sprintf("%d", info.User),
 		Domain:    info.Domain,
 		ChunkSize: -1, // means no use.
-		Type:      meta.EntitySeaweedFS,
+		Type:      meta.EntityGlusterFS,
 		ExtAttr:   make(map[string]string),
 	}
 
@@ -171,7 +174,7 @@ func (h *GlustraHandler) Open(id string, domain int64) (DFSFile, error) {
 }
 
 // Duplicate duplicates an entry for a file.
-func (h *GlustraHandler) Duplicate(fid string) (string, error) {
+func (h *GlustraHandler) Duplicate(fid string, domain int64) (string, error) {
 	return h.duplfs.DuplicateWithId(fid, "", time.Time{})
 }
 
@@ -255,11 +258,6 @@ func (h *GlustraHandler) openGlustraFile(name string) (*GlustraFile, error) {
 	}, nil
 }
 
-// IsHealthy checks whether shard is ok.
-func (h *GlustraHandler) IsHealthy() bool {
-	return h.HealthStatus() == HealthOk
-}
-
 // HealthStatus returns the status of node health.
 func (h *GlustraHandler) HealthStatus() int {
 	// TODO(hanyh): check cassandra?
@@ -292,6 +290,16 @@ func (h *GlustraHandler) FindByMd5(md5 string, domain int64, size int64) (string
 	}
 
 	return file.Id, nil
+}
+
+// Create creates a DFSFile with the given id.
+func (h *GlustraHandler) CreateWithGivenId(info *transfer.FileInfo) (DFSFile, error) {
+	return h.Create(info)
+}
+
+// Duplicate duplicates an entry with the given id.
+func (h *GlustraHandler) DuplicateWithGivenId(primaryId string, dupId string) (string, error) {
+	return h.duplfs.DuplicateWithId(primaryId, dupId, time.Time{})
 }
 
 // NewGlustraHandler creates a GlustraHandler.

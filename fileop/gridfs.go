@@ -132,7 +132,7 @@ func (h *GridFsHandler) Open(id string, domain int64) (dfsFile DFSFile, err erro
 }
 
 // Duplicate duplicates an entry for a file.
-func (h *GridFsHandler) Duplicate(oid string) (string, error) {
+func (h *GridFsHandler) Duplicate(oid string, domain int64) (string, error) {
 	return h.duplfs.Duplicate(h.gridfs, oid)
 }
 
@@ -210,11 +210,6 @@ func (h *GridFsHandler) Remove(id string, domain int64) (bool, *meta.File, error
 func (h *GridFsHandler) Close() error {
 	h.session.Close()
 	return nil
-}
-
-// IsHealthy checks whether shard is ok.
-func (h *GridFsHandler) IsHealthy() bool {
-	return h.HealthStatus() == HealthOk
 }
 
 // HealthStatus returns the status of node health.

@@ -160,8 +160,8 @@ func (bsh *BackStoreHandler) Close() error {
 }
 
 // Duplicate duplicates an entry for a file.
-func (bsh *BackStoreHandler) Duplicate(oid string) (string, error) {
-	return bsh.DFSFileHandler.Duplicate(oid)
+func (bsh *BackStoreHandler) Duplicate(oid string, domain int64) (string, error) {
+	return bsh.DFSFileHandler.Duplicate(oid, domain)
 }
 
 // Find finds a file, if the file not exists, return empty string.
@@ -174,11 +174,6 @@ func (bsh *BackStoreHandler) Find(fid string) (string, *DFSFileMeta, *transfer.F
 // Name returns handler's name.
 func (bsh *BackStoreHandler) Name() string {
 	return bsh.DFSFileHandler.Name()
-}
-
-// IsHealthy checks whether shard is ok.
-func (bsh *BackStoreHandler) IsHealthy() bool {
-	return bsh.DFSFileHandler.IsHealthy()
 }
 
 // HealthStatus returns the status of node health.

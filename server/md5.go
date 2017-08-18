@@ -71,7 +71,7 @@ func (s *DFSServer) getByMd5Biz(c interface{}, r interface{}, args []interface{}
 		return mf, err
 	}
 
-	did, err := p.Duplicate(oid)
+	did, err := p.Duplicate(oid, req.Domain)
 	if err != nil {
 		event := &metadata.Event{
 			EType:       metadata.FailMd5,
