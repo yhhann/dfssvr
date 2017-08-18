@@ -20,6 +20,7 @@ go_binary(
         "//dfs/proto/discovery:go_default_library",
         "//dfs/proto/transfer:go_default_library",
         "//dfs/server:go_default_library",
+        "//dfs/sql:go_default_library",
         "//letsgo/grpc:go_default_library",
         "//letsgo/runtime:go_default_library",
         "//letsgo/version:go_default_library",
