@@ -173,7 +173,7 @@ func (r *ZKDfsServerRegister) Close() {
 	r.observersLock.Lock()
 	defer r.observersLock.Unlock()
 
-	for observer, _ := range r.observers {
+	for observer := range r.observers {
 		n := r.observers[observer]
 		delete(r.observers, observer)
 		close(observer)

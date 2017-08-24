@@ -6,7 +6,10 @@ go_library(
     name = "go_default_library",
     srcs = glob(
         ["*.go"],
-        exclude = ["*_test.go", "mock_*.go"],
+        exclude = [
+            "*_test.go",
+            "mock_*.go",
+        ],
     ),
     deps = [
         "//dfs/meta:go_default_library",

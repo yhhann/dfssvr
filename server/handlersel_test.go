@@ -43,7 +43,7 @@ func printSegments(segments []*metadata.Segment) {
 
 func TestUpdateSegment(t *testing.T) {
 	segments := []*metadata.Segment{
-		&metadata.Segment{
+		{
 			Domain: 1,
 		},
 	}

@@ -4,10 +4,12 @@
 package fileop
 
 import (
+	reflect "reflect"
+
 	gomock "github.com/golang/mock/gomock"
+
 	meta "jingoal.com/dfs/meta"
 	transfer "jingoal.com/dfs/proto/transfer"
-	reflect "reflect"
 )
 
 // MockDFSFile is a mock of DFSFile interface

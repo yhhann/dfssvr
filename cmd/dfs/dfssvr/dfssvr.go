@@ -193,7 +193,7 @@ func main() {
 }
 
 func flushLogDaemon() {
-	for _ = range time.Tick(time.Duration(*logFlushInterval) * time.Second) {
+	for range time.Tick(time.Duration(*logFlushInterval) * time.Second) {
 		glog.Flush()
 	}
 }
