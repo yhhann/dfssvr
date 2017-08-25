@@ -526,6 +526,14 @@ func (hs *HandlerSelector) createMinorHandler(shard *metadata.Shard) (handler fi
 	switch shd.ShdType {
 	case metadata.Glustra:
 		handler, err = fileop.NewGlustraHandler(&shd, filepath.Join(*logDir, shd.Name))
+	case metadata.Seadra:
+		var h *fileop.SeadraHandler
+		h, err = fileop.NewSeadraHandler(&shd)
+		if err != nil {
+			return
+		}
+		h.StartHealthCheckRoutine(time.Duration(*HealthCheckInterval)*time.Second, time.Duration(*HealthCheckTimeout)*time.Second)
+		handler = h
 	default:
 		err = fmt.Errorf("invalid shard type")
 	}

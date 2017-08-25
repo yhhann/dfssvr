@@ -40,4 +40,7 @@ type DraOp interface {
 
 	// DecRefCnt decreases reference count.
 	DecRefCnt(id string) (*Ref, error)
+
+	// HealthCheck checks the health of cassandra.
+	HealthCheck(node string) error
 }

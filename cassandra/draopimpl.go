@@ -12,6 +12,16 @@ import (
 )
 
 const (
+	cqlAttrUser        = "user"        // string
+	cqlAttrPass        = "pass"        // string
+	cqlAttrKeyspace    = "keyspace"    // string
+	cqlAttrConsistency = "consistency" // string
+	cqlAttrPort        = "port"        // integer
+	cqlAttrTimeout     = "timeout"     // integer
+	cqlAttrConns       = "conns"       // integer
+)
+
+const (
 	// table name.
 	FILES_COL = "files"
 	DUPL_COL  = "dupl"
@@ -33,10 +43,13 @@ const (
 	cqlLookupRefById     = `SELECT * FROM rc WHERE id = ?`
 	cqlRemoveRef         = `DELETE FROM rc WHERE id = ?`
 	cqlUpdateRefCnt      = `UPDATE rc SET refcnt = refcnt + %d WHERE id = ?`
-	cqlLookupFileById    = `SELECT * FROM files where id = ?`
-	calLookupFileByMd5   = `SELECT * FROM md5 where md5 = ?`
+	cqlLookupFileById    = `SELECT * FROM files WHERE id = ?`
+	calLookupFileByMd5   = `SELECT * FROM md5 WHERE md5 = ?`
 	cqlSaveFile          = `INSERT INTO files (id, biz, cksize, domain, fn, size, md5, udate, uid, type, attrs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	cqlRemoveFile        = `DELETE FROM files where id = ?`
+	cqlRemoveFile        = `DELETE FROM files WHERE id = ?`
+
+	cqlTouchHealth = `INSERT INTO health (id, magic) VALUES (?, ?)`
+	cqlCheckHealth = `SELECT * FROM health WHERE id = ?`
 )
 
 var (
@@ -305,6 +318,31 @@ func (op *DraOpImpl) RemoveFile(id string) error {
 	})
 }
 
+// Health checks the health of cql.
+func (op *DraOpImpl) HealthCheck(node string) error {
+	magic := time.Now().Unix()
+	return op.execute(func(session *gocql.Session) error {
+		err := session.Query(cqlTouchHealth, node, magic).Exec()
+		if err != nil {
+			return err
+		}
+
+		var health struct {
+			Id    string `cql:"id"`
+			Magic int64  `cql:"magic"`
+		}
+		q := session.Query(cqlCheckHealth, node)
+		b := cqlr.BindQuery(q)
+		defer b.Close()
+		b.Scan(&health)
+		if health.Magic != magic {
+			return fmt.Errorf("Not the same number %d %d.", health.Magic, magic)
+		}
+
+		return nil
+	})
+}
+
 // getSession returns a cql session.
 // It makes dfs server can start before cassandra.
 func (op *DraOpImpl) getSession() (*gocql.Session, error) {
@@ -346,4 +384,64 @@ func NewDraOpImpl(seeds []string, sqlOptions ...func(*DraOpImpl)) *DraOpImpl {
 	}
 
 	return self
+}
+
+// ParseCqlOptions parses options of cassandra from map.
+func ParseCqlOptions(attr map[string]interface{}) []func(*DraOpImpl) {
+	options := make([]func(*DraOpImpl), 0, len(attr))
+
+	options = append(options, func(m *DraOpImpl) {
+		port, ok := attr[cqlAttrPort].(int)
+		if !ok {
+			return
+		}
+		m.Port = port
+	})
+
+	options = append(options, func(m *DraOpImpl) {
+		timeout, ok := attr[cqlAttrTimeout].(int)
+		if !ok {
+			return
+		}
+		m.Timeout = time.Millisecond * time.Duration(timeout)
+	})
+
+	options = append(options, func(m *DraOpImpl) {
+		conns, ok := attr[cqlAttrConns].(int)
+		if !ok {
+			return
+		}
+		m.NumConns = conns
+	})
+
+	options = append(options, func(m *DraOpImpl) {
+		ks := attr[cqlAttrKeyspace].(string) // panic
+		m.Keyspace = ks
+	})
+
+	options = append(options, func(m *DraOpImpl) {
+		consistency, ok := attr[cqlAttrConsistency].(string)
+		if !ok {
+			return
+		}
+		m.Consistency = gocql.ParseConsistency(consistency)
+	})
+
+	options = append(options, func(m *DraOpImpl) {
+		user, ok := attr[cqlAttrUser].(string)
+		if !ok || len(user) == 0 {
+			return
+		}
+		pass, ok := attr[cqlAttrPass].(string)
+		if !ok {
+			return
+		}
+
+		m.Authenticator = gocql.PasswordAuthenticator{
+			Username: user,
+			Password: pass,
+		}
+	})
+
+	return options
 }

@@ -16,6 +16,7 @@ go_library(
         ":transfer_proto",
     ],
     deps = [
+        "//dfs/meta:go_default_library",
         "//third-party-go/vendor/github.com/golang/glog:go_default_library",
         "//third-party-go/vendor/github.com/golang/protobuf/proto:go_default_library",
         "//third-party-go/vendor/golang.org/x/net/context:go_default_library",

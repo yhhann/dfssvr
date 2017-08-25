@@ -272,7 +272,7 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, *meta.File, erro
 
 	result, entityId, err := h.duplfs.LazyDelete(gridfs, id)
 	if err != nil {
-		glog.Warningf("Failed to remove file %s %d, %s.", id, domain, err)
+		glog.Warningf("Failed to remove file %s %d from %s, %s.", id, domain, h.Name(), err)
 		return false, nil, err
 	}
 
@@ -289,7 +289,7 @@ func (h *GlusterHandler) Remove(id string, domain int64) (bool, *meta.File, erro
 
 		filePath := util.GetFilePath(h.VolBase, domain, (*entityId).Hex(), h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
-			glog.Warningf("Failed to remove file %s %d from %s, %s.", id, domain, filePath, err)
+			glog.Warningf("Failed to remove file %s %d from %s, %s.", id, domain, h.Name(), err)
 		}
 	}
 

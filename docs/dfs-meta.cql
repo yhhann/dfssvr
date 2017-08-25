@@ -35,3 +35,9 @@ CREATE MATERIALIZED VIEW md5 AS
   SELECT * FROM files
   WHERE id IS NOT NULL AND md5 IS NOT NULL
   PRIMARY KEY (md5, id);
+
+CREATE TABLE health (
+    id text,
+    magic bigint,
+    PRIMARY KEY(id)
+);

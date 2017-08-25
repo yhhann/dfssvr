@@ -14,11 +14,6 @@ import (
 	"jingoal.com/seaweedfs-adaptor/weedfs"
 )
 
-const (
-	BSMetaKey_WeedFid   = "weedfid"
-	BSMetaKey_Chunksize = "chunksize"
-)
-
 var (
 	bsWithRealName = flag.Bool("bs-with-real-name", false, "create backstore file with the real name.")
 
@@ -59,8 +54,8 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 		}
 
 		originalFile.updateFileMeta(map[string]interface{}{
-			BSMetaKey_WeedFid:   wFile.Fid,
-			BSMetaKey_Chunksize: wFile.GetChunkSize(),
+			MetaKey_WeedFid:   wFile.Fid,
+			MetaKey_Chunksize: wFile.GetChunkSize(),
 		})
 		instrument.BackstoreFileCounter <- &instrument.Measurements{
 			Name:  "created",

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocql/gocql"
 	"github.com/golang/glog"
 	"github.com/kshlm/gogfapi/gfapi"
 	"gopkg.in/mgo.v2/bson"
@@ -22,20 +21,6 @@ import (
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/util"
-)
-
-const (
-	GlustraAttrUser        = "user"        // string
-	GlustraAttrPass        = "pass"        // string
-	GlustraAttrKeyspace    = "keyspace"    // string
-	GlustraAttrConsistency = "consistency" // string
-	GlustraAttrPort        = "port"        // integer
-	GlustraAttrTimeout     = "timeout"     // integer
-	GlustraAttrConns       = "conns"       // integer
-)
-
-const (
-	GlustraDefaultChunkSize = 512 * 1024
 )
 
 // GlustraHandler implements DFSFileHandler.
@@ -195,7 +180,7 @@ func (h *GlustraHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileIn
 
 	meta := &DFSFileMeta{
 		Bizname:   f.Biz,
-		Fid:       f.ExtAttr[BSMetaKey_WeedFid],
+		Fid:       f.ExtAttr[MetaKey_WeedFid],
 		ChunkSize: chunksize,
 	}
 
@@ -224,7 +209,7 @@ func (h *GlustraHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileIn
 func (h *GlustraHandler) Remove(id string, domain int64) (bool, *meta.File, error) {
 	result, entityId, err := h.duplfs.Delete(id)
 	if err != nil {
-		glog.Warningf("Failed to remove file %s %d, %s.", id, domain, err)
+		glog.Warningf("Failed to remove file %s %d from %s, %s.", id, domain, h.Name(), err)
 		return false, nil, err
 	}
 
@@ -238,7 +223,7 @@ func (h *GlustraHandler) Remove(id string, domain int64) (bool, *meta.File, erro
 
 		filePath := util.GetFilePath(h.VolBase, domain, entityId, h.PathVersion, h.PathDigit)
 		if err := h.Unlink(filePath); err != nil {
-			glog.Warningf("Failed to remove file %s %d from %s, %s.", id, domain, filePath, err)
+			glog.Warningf("Failed to remove file %s %d from %s, %s.", id, domain, h.Name(), err)
 		}
 	}
 
@@ -260,7 +245,10 @@ func (h *GlustraHandler) openGlustraFile(name string) (*GlustraFile, error) {
 
 // HealthStatus returns the status of node health.
 func (h *GlustraHandler) HealthStatus() int {
-	// TODO(hanyh): check cassandra?
+	// check cassandra
+	if err := h.draOp.HealthCheck(transfer.NodeName); err != nil {
+		return MetaNotHealthy
+	}
 
 	magicDirPath := filepath.Join(h.VolBase, "health", transfer.ServerId)
 	if err := h.Volume.MkdirAll(magicDirPath, 0755); err != nil && os.IsExist(err) {
@@ -318,71 +306,11 @@ func NewGlustraHandler(si *metadata.Shard, volLog string) (*GlustraHandler, erro
 	}
 
 	seeds := strings.Split(si.Uri, ",")
-	handler.draOp = dra.NewDraOpImpl(seeds, parseCqlOptions(si.Attr)...)
+	handler.draOp = dra.NewDraOpImpl(seeds, dra.ParseCqlOptions(si.Attr)...)
 
 	handler.duplfs = dra.NewDuplDra(handler.draOp)
 
 	return handler, nil
-}
-
-// parseCqlOptions parses options of cassandra from map.
-func parseCqlOptions(attr map[string]interface{}) []func(*dra.DraOpImpl) {
-	options := make([]func(*dra.DraOpImpl), 0, len(attr))
-
-	options = append(options, func(m *dra.DraOpImpl) {
-		port, ok := attr[GlustraAttrPort].(int)
-		if !ok {
-			return
-		}
-		m.Port = port
-	})
-
-	options = append(options, func(m *dra.DraOpImpl) {
-		timeout, ok := attr[GlustraAttrTimeout].(int)
-		if !ok {
-			return
-		}
-		m.Timeout = time.Millisecond * time.Duration(timeout)
-	})
-
-	options = append(options, func(m *dra.DraOpImpl) {
-		conns, ok := attr[GlustraAttrConns].(int)
-		if !ok {
-			return
-		}
-		m.NumConns = conns
-	})
-
-	options = append(options, func(m *dra.DraOpImpl) {
-		ks := attr[GlustraAttrKeyspace].(string) // panic
-		m.Keyspace = ks
-	})
-
-	options = append(options, func(m *dra.DraOpImpl) {
-		consistency, ok := attr[GlustraAttrConsistency].(string)
-		if !ok {
-			return
-		}
-		m.Consistency = gocql.ParseConsistency(consistency)
-	})
-
-	options = append(options, func(m *dra.DraOpImpl) {
-		user, ok := attr[GlustraAttrUser].(string)
-		if !ok || len(user) == 0 {
-			return
-		}
-		pass, ok := attr[GlustraAttrPass].(string)
-		if !ok {
-			return
-		}
-
-		m.Authenticator = gocql.PasswordAuthenticator{
-			Username: user,
-			Password: pass,
-		}
-	})
-
-	return options
 }
 
 // GlustraFile implements DFSFile
@@ -486,14 +414,14 @@ func toString(x interface{}) string {
 
 // getFileMeta returns file dfs meta.
 func (f GlustraFile) getFileMeta() *DFSFileMeta {
-	ck, err := strconv.ParseInt(f.sdf.ExtAttr[BSMetaKey_Chunksize], 10, 64)
+	ck, err := strconv.ParseInt(f.sdf.ExtAttr[MetaKey_Chunksize], 10, 64)
 	if err != nil {
-		glog.Warningf("Failed to parse chunk size, %s", f.sdf.ExtAttr[BSMetaKey_Chunksize])
-		ck = GlustraDefaultChunkSize
+		glog.Warningf("Failed to parse chunk size, %s", f.sdf.ExtAttr[MetaKey_Chunksize])
+		ck = DefaultSeaweedChunkSize
 	}
 	return &DFSFileMeta{
 		Bizname:   f.sdf.Biz,
-		Fid:       f.sdf.ExtAttr[BSMetaKey_WeedFid],
+		Fid:       f.sdf.ExtAttr[MetaKey_WeedFid],
 		ChunkSize: ck,
 	}
 }

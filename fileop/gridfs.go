@@ -187,7 +187,7 @@ func (h *GridFsHandler) Remove(id string, domain int64) (bool, *meta.File, error
 
 	result, entityId, err := h.duplfs.LazyDelete(gridfs, id)
 	if err != nil {
-		glog.Warningf("Failed to remove file %s %d, %s.", id, domain, err)
+		glog.Warningf("Failed to remove file %s %d from %s, %s.", id, domain, h.Name(), err)
 		return false, nil, err
 	}
 
