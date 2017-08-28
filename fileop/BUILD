@@ -21,7 +21,6 @@ go_library(
         "//dfs/recovery:go_default_library",
         "//dfs/util:go_default_library",
         "//seaweedfs-adaptor/weedfs:go_default_library",
-        "//third-party-go/vendor/github.com/gocql/gocql:go_default_library",
         "//third-party-go/vendor/github.com/golang/glog:go_default_library",
         "//third-party-go/vendor/github.com/kshlm/gogfapi/gfapi:go_default_library",
         "//third-party-go/vendor/gopkg.in/mgo.v2:go_default_library",
