@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/mgo.v2/bson"
 
@@ -19,13 +20,17 @@ import (
 )
 
 var (
-	lg         = log.New(os.Stdout, "[info]", log.Lshortfile)
-	lgFlag     = *flag.Bool("logflag", false, "if print log")
+	lg            = log.New(os.Stdout, "[info]", log.Lshortfile)
+	lgFlag        = flag.Bool("logflag", false, "if print log")
+	metricsAddr   = flag.String("metrics-address", ":7070", "The address to listen on for metrics.")
+	metricsPath   = flag.String("metrics-path", "/sql-metrics", "The path of metrics.")
+	dsn           = flag.String("dsn", "root:zcl@tcp(127.0.0.1:3306)/file?charset=utf8", "datasource service name")
+	channelSize   = flag.Int("channelsize", 10, "channel buffer size")
+	taskSize      = flag.Int("tasksize", 100, "the number of task")
+	goroutineSize = flag.Int("goroutinesize", 10, "the number of goroutine")
+
 	isInfinite = false
 	fmop       meta.FileMetaOp
-
-	metricsAddr = flag.String("metrics-address", ":7070", "The address to listen on for metrics.")
-	metricsPath = flag.String("metrics-path", "/sql-metrics", "The path of metrics.")
 
 	saveGauge           prometheus.Gauge
 	findGauge           prometheus.Gauge
@@ -148,7 +153,7 @@ func newFile() *meta.File {
 
 func (task FMTask) process() {
 
-	if isInfinite == false {
+	if !isInfinite {
 		defer func() {
 			done <- true
 		}()
@@ -167,7 +172,7 @@ func (task FMTask) process() {
 		return
 	}
 
-	if lgFlag {
+	if *lgFlag {
 		lg.Println(" Save ")
 	}
 
@@ -178,7 +183,7 @@ func (task FMTask) process() {
 		operateErrHistogram.WithLabelValues("find_err").Observe(1)
 		return
 	}
-	if lgFlag {
+	if *lgFlag {
 		lg.Println(" Find ")
 	}
 
@@ -189,7 +194,7 @@ func (task FMTask) process() {
 		operateErrHistogram.WithLabelValues("findbymd5_err").Observe(1)
 		return
 	}
-	if lgFlag {
+	if *lgFlag {
 		lg.Println(" FindByMd5 ")
 	}
 
@@ -200,7 +205,7 @@ func (task FMTask) process() {
 		operateErrHistogram.WithLabelValues("duplicate_err").Observe(1)
 		return
 	}
-	if lgFlag {
+	if *lgFlag {
 		lg.Println(" DuplicateWithId ")
 	}
 
@@ -211,7 +216,7 @@ func (task FMTask) process() {
 		operateErrHistogram.WithLabelValues("findbydid_err").Observe(1)
 		return
 	}
-	if lgFlag {
+	if *lgFlag {
 		lg.Println(" Find by dupId ")
 	}
 
@@ -223,7 +228,7 @@ func (task FMTask) process() {
 		return
 	}
 
-	if lgFlag {
+	if *lgFlag {
 		lg.Println(" Delete by dupId , result is ", toBeDel)
 	}
 
@@ -235,7 +240,7 @@ func (task FMTask) process() {
 		return
 	}
 
-	if lgFlag {
+	if *lgFlag {
 		lg.Println(" Delete by fileId ", toBeDelete)
 	}
 
@@ -266,7 +271,9 @@ func (consumer FMTaskConsumer) DoConsume(taskChannel <-chan *FMTask, goroutineSi
 		go func() {
 			for {
 				task := <-taskChannel
-				task.process()
+				if task != nil {
+					task.process()
+				}
 			}
 		}()
 	}
@@ -281,47 +288,66 @@ func StartMetrics() {
 
 func main() {
 
-	dsn := *flag.String("dsn", "root:zcl@tcp(127.0.0.1:3306)/file?charset=utf8", "datasource service name")
+	flag.Parse()
 
-	channelSize := *flag.Int("channelsize", 10, "channel buffer size")
+	fmt.Println(*dsn, *channelSize, *taskSize, *goroutineSize)
 
-	taskSize := *flag.Int("tasksize", 100, "the number of task")
-
-	goroutineSize := *flag.Int("goroutinesize", 10, "the number of goroutine")
-
-	fmt.Println(dsn, channelSize, taskSize, goroutineSize)
+	checkFlags()
 
 	StartMetrics()
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	fmOperator, err := sql.NewFMOperator(dsn)
+	fmOperator, err := sql.NewFMOperator(*dsn)
 	if err != nil {
 		fmt.Printf("occur err ", err)
 		os.Exit(1)
 	}
 	fmop = sql.NewMetaImpl(fmOperator)
 
-	taskChanl := make(chan *FMTask, channelSize)
+	taskChanl := make(chan *FMTask, *channelSize)
 
 	consumer := new(FMTaskConsumer)
-	consumer.DoConsume(taskChanl, goroutineSize)
+	consumer.DoConsume(taskChanl, *goroutineSize)
 
 	go func() {
 		producer := new(FMTaskProducer)
-		producer.DoProduct(taskChanl, taskSize)
+		producer.DoProduct(taskChanl, *taskSize)
 	}()
 
-	if taskSize <= 0 {
+	if *taskSize <= 0 {
 		isInfinite = true
 		select {}
 	}
 
-	for i := 0; i < taskSize; i++ {
+	for i := 0; i < *taskSize; i++ {
 		<-done
 	}
 
 	close(taskChanl)
 	lg.Println("***************[ended]******************")
+
+}
+
+func checkFlags() {
+	if *metricsAddr == "" {
+		glog.Exit("Error: flag --metrics-address is required.")
+	}
+	if *metricsPath == "" {
+		glog.Exit("Flag --metrics-path is required.")
+	}
+	if *dsn == "" {
+		glog.Exit("Flag --dsn is required.")
+	}
+
+	if *channelSize < 0 {
+		glog.Exit("Flag --channelSize is required.")
+	}
+	if *taskSize < 0 {
+		glog.Exit("Flag --taskSize is required.")
+	}
+	if *goroutineSize < 0 {
+		glog.Exit("Flag --goroutineSize is required.")
+	}
 
 }
