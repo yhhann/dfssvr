@@ -159,6 +159,8 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) (err error) {
 	switch shard.ShdType {
 	case metadata.Glustra:
 		handler, err = fileop.NewGlustraHandler(shard, filepath.Join(*logDir, shard.Name))
+	case metadata.Seadra:
+		handler, err = fileop.NewSeadraHandler(shard)
 	case metadata.Glustergo:
 		handler, err = fileop.NewGlusterHandler(shard, filepath.Join(*logDir, shard.Name))
 	case metadata.Gridgo:
@@ -171,44 +173,44 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) (err error) {
 		err = fmt.Errorf("invalid shard type")
 	}
 	if err != nil || handler == nil {
-		glog.Warningf("Failed to create handler, shard: %s, type: %d, error: %v", shard.Name, shard.ShdType, err)
+		glog.Warningf("Failed to create handler, shard: %s, type: %d, error: %v.", shard.Name, shard.ShdType, err)
 		return
 	}
 
 	if shard.ShdType == metadata.DegradeServer {
 		if hs.degradeShardHandler != nil {
-			glog.Warningf("Failed to create degrade server, since we already have one, shard: %v", shard)
+			glog.Warningf("Failed to create degrade server, since we already have one, shard: %v.", shard)
 			return
 		}
 
 		dh := fileop.NewDegradeHandler(handler, hs.dfsServer.reOp)
 		hs.degradeShardHandler = NewShardHandler(dh, statusOk, hs)
-		glog.Infof("Succeeded to create degrade handler, shard: %s", shard.Name)
+		glog.Infof("Succeeded to create degrade handler '%s'.", shard.Name)
 		return
-	}
-
-	if hs.minorHandler != nil {
-		handler = fileop.NewTeeHandler(handler, hs.minorHandler)
-		glog.Infof("Succeeded to attach handler %s with minor server %s", handler.Name(), hs.minorHandler.Name())
 	}
 
 	if hs.backStoreShard != nil {
 		handler = fileop.NewBackStoreHandler(handler, hs.backStoreShard)
-		glog.Infof("Succeeded to attach handler %s with back store %s", handler.Name(), hs.backStoreShard.Name)
+		glog.Infof("Succeeded to attach handler '%s' with bs '%s'.", handler.Name(), hs.backStoreShard.Name)
+	}
+
+	if hs.minorHandler != nil {
+		handler = fileop.NewTeeHandler(handler, hs.minorHandler)
+		glog.Infof("Succeeded to attach handler '%s' with minor '%s'.", handler.Name(), hs.minorHandler.Name())
 	}
 
 	if sh, ok := hs.getShardHandler(handler.Name()); ok {
 		if err := sh.Shutdown(); err != nil {
-			glog.Warningf("Failed to shutdown old handler: %v", sh.handler.Name())
+			glog.Warningf("Failed to shutdown old handler, shard: '%s'.", sh.handler.Name())
 		}
-		glog.Infof("Succeded to shutdown old handler, shard: %s", shard.Name)
+		glog.Infof("Succeded to shutdown old handler, shard: '%s'.", shard.Name)
 	}
 
 	sh := NewShardHandler(handler, statusOk, hs)
 
 	hs.addRecovery(handler.Name(), sh.recoveryChan)
 
-	glog.Infof("Succeeded to create handler, shard: %s, type %d.", shard.Name, shard.ShdType)
+	glog.Infof("Succeeded to create handler '%s' type %d.", shard.Name, shard.ShdType)
 
 	return
 }
@@ -459,34 +461,32 @@ func (hs *HandlerSelector) backfillShard() {
 			NormalServer:  shardAddr.ShardDbName,
 		})
 
-		glog.Infof("Succeeded to backfill shard with '%s'.", shardAddr.ShardDbName)
+		glog.Infof("Succeeded to create a minimal shard '%s'.", shardAddr.ShardDbName)
 	} else {
-		glog.Infof("Succeeded to backfill shard %d.", len(shards))
+		glog.Infof("Succeeded to get %d shards.", len(shards))
 	}
 
-	if *fileop.TeeEnable {
-		for _, shard := range shards {
-			if shard.ShdType > metadata.MinorServer {
-				h, err := hs.createMinorHandler(shard)
-				if err != nil {
-					glog.Warningf("Failed to create minor handler %s, %v.", shard.Name, err)
-					continue
-				}
-
-				hs.minorHandler = h
-				glog.Infof("Succeeded to create minor handler %s, type %d.", h.Name(), shard.ShdType)
-				break
+	for _, shard := range shards {
+		if shard.ShdType > metadata.MinorServer {
+			h, err := hs.createMinorHandler(shard)
+			if err != nil {
+				glog.Warningf("Failed to create minor handler %s, %v.", shard.Name, err)
+				continue
 			}
+
+			hs.minorHandler = h
+			glog.Infof("Succeeded to create minor handler %s, type %d.", h.Name(), shard.ShdType)
+
+			break
 		}
 	}
 
-	if hs.minorHandler == nil {
-		for _, shard := range shards {
-			if shard.ShdType == metadata.BackstoreServer {
-				hs.backStoreShard = shard
-				glog.Infof("Succeeded to create back store handler %s.", shard.Name)
-				break
-			}
+	for _, shard := range shards {
+		if shard.ShdType == metadata.BackstoreServer {
+			hs.backStoreShard = shard
+			glog.Infof("Succeeded to create back store handler %s.", shard.Name)
+
+			break
 		}
 	}
 
@@ -509,8 +509,9 @@ func (hs *HandlerSelector) backfillShard() {
 		close(handlerOver)
 	}()
 
-	glog.Infof("Initializing handlers for one minutes.")
-	ticker := time.Tick(time.Second * 20)
+	tm := 20 * time.Second
+	glog.Infof("Initializing handlers for %v.", tm)
+	ticker := time.Tick(tm)
 	select {
 	case <-handlerOver:
 		glog.Infof("All handlers initialized ok!")
@@ -541,9 +542,9 @@ func (hs *HandlerSelector) createMinorHandler(shard *metadata.Shard) (handler fi
 }
 
 func (hs *HandlerSelector) showSegments() {
-	glog.Infof("Succeeded to backfill segment %d.", len(hs.segments))
+	glog.Infof("Succeeded to get %d segments:", len(hs.segments))
 	for _, seg := range hs.segments {
-		glog.Infof("Segment: [Domain:%d, ns:%s, ms:%s]",
+		glog.Infof("\tSegment: [Domain:%d, ns:%s, ms:%s]",
 			seg.Domain, seg.NormalServer, seg.MigrateServer)
 	}
 }

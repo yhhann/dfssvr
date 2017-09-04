@@ -199,7 +199,7 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zk *notice.DfsZ
 	server.selector.startShardNoticeRoutine()
 	startRateCheckRoutine()
 
-	glog.Infof("Succeeded to start DFS server %v.", name)
+	glog.Infof("Succeeded to start DFS server '%s'.", name)
 
 	return server, nil
 }

@@ -201,7 +201,7 @@ func (h *SeadraHandler) healthCheck(timeout time.Duration) {
 	select {
 	case status := <-healthStatus:
 		if status != HealthOk {
-			glog.Warningf("check handler %v %d", h.Name(), status)
+			glog.Warningf("check handler '%s' %s.", h.Name(), healthStatus2String(status))
 		}
 		instrument.HealthCheckStatus <- &instrument.Measurements{
 			Name:  h.Name(),
@@ -209,7 +209,7 @@ func (h *SeadraHandler) healthCheck(timeout time.Duration) {
 			Value: 1.0,
 		}
 	case <-ticker.C:
-		glog.Warningf("check handler %v expired", h.Name())
+		glog.Warningf("check handler '%s' expired.", h.Name())
 		instrument.HealthCheckStatus <- &instrument.Measurements{
 			Name:  h.Name(),
 			Biz:   "expired",

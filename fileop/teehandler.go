@@ -1,7 +1,6 @@
 package fileop
 
 import (
-	"flag"
 	"io"
 
 	"github.com/golang/glog"
@@ -10,10 +9,6 @@ import (
 	"jingoal.com/dfs/instrument"
 	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/proto/transfer"
-)
-
-var (
-	TeeEnable = flag.Bool("tee-enable", true, "enable tee.")
 )
 
 type TeeHandler struct {
@@ -122,21 +117,23 @@ func (h *TeeHandler) Remove(id string, domain int64) (bool, *meta.File, error) {
 		return result, meta, err
 	}
 
-	if conf.IsMinorWriteOk(domain) {
-		_, _, er := h.minor.Remove(id, domain)
-		if er != nil {
-			instrument.MinorFileCounter <- &instrument.Measurements{
-				Name:  "remove_failed",
-				Value: 1.0,
-			}
-			glog.Warningf("Failed to remove file %s from minor, %s.", id, er)
-		} else {
-			instrument.MinorFileCounter <- &instrument.Measurements{
-				Name:  "removed",
-				Value: 1.0,
-			}
-			glog.V(3).Infof("Remove file %s from minor %s.", id, h.Name())
+	if rid, _, _, err := h.minor.Find(id); len(rid) == 0 && err != nil {
+		return result, meta, err
+	}
+
+	_, _, er := h.minor.Remove(id, domain)
+	if er != nil {
+		instrument.MinorFileCounter <- &instrument.Measurements{
+			Name:  "remove_failed",
+			Value: 1.0,
 		}
+		glog.Warningf("Failed to remove file %s from minor, %s.", id, er)
+	} else {
+		instrument.MinorFileCounter <- &instrument.Measurements{
+			Name:  "removed",
+			Value: 1.0,
+		}
+		glog.V(3).Infof("Remove file %s from minor %s.", id, h.Name())
 	}
 
 	return result, meta, err

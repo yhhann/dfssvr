@@ -82,3 +82,16 @@ type DFSFileMinorHandler interface {
 	// Duplicate duplicates an entry with the given id.
 	DuplicateWithGivenId(primaryId string, dupId string) (string, error)
 }
+
+func healthStatus2String(status int) string {
+	switch status {
+	case HealthOk:
+		return "ok"
+	case MetaNotHealthy:
+		return "meta failure"
+	case StoreNotHealthy:
+		return "entity failure"
+	default:
+		return "unknown"
+	}
+}
