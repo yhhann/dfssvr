@@ -283,13 +283,16 @@ func (operator FMOperator) FindDupInfoByDId(dId string) (string, time.Time, erro
 
 func (operator FMOperator) FindFileMetaByMD5WithExtAttr(md5 string, domain int64) (*FileMetadataDO, error) {
 	stmt, err := operator.db.Prepare(fm_sel_bydomainmd5)
-	defer stmt.Close()
-
-	rows, err := stmt.Query(domain, md5)
-	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(domain, md5)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
 	var fm = new(FileMetadataDO)
 	var upload_time string

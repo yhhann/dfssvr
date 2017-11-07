@@ -60,16 +60,18 @@ created_time : 操作时间，格式yyyy-mm-dd HH:MM:SS
 说明：
 id : int类型，最大值4294967296
 fId : 外键，表file_metadata的主键，一个fId可以对应多个id
-attr ：varchar(1000)
+attr ：varchar(255)
 
 sql:
+create database file character set = utf8;
+
 create table file_metadata (id varchar(50) primary key,name varchar(255),biz varchar(50) not null,
-md5 varchar(50) not null, user_id varchar(30) not null, domain bigint not null,size int not null,
-chun_size int not null,ref_cnt int not null,upload_time timestamp,entity_type tinyint not null,index (domain,md5)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+md5 varchar(50) not null, user_id varchar(30) not null, domain bigint unsigned not null,size int unsigned not null,
+chun_size int unsigned not null,ref_cnt int unsigned not null,upload_time timestamp,entity_type tinyint not null,index (domain,md5)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 create table duplicate_info(dId varchar(50) primary key,fId varchar(50) not null,created_time timestamp,constraint fk_df_id foreign key(fId) references file_metadata(id) ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-create table ext_attr (id int auto_increment primary key,fId varchar(50) not null,attr varchar(255) ,constraint fk_ef_id foreign key(fId) references file_metadata(id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+create table ext_attr (id int unsigned auto_increment primary key,fId varchar(50) not null,attr varchar(255) ,constraint fk_ef_id foreign key(fId) references file_metadata(id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 2.业务接口设计
 （1）保存文件元数据
