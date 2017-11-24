@@ -40,7 +40,7 @@ func (h *TeeHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 				Name:  "created",
 				Value: 1.0,
 			}
-			glog.V(3).Infof("Create file %s on minor %s.", f.GetFileInfo().Name, h.Name())
+			glog.V(3).Infof("Create file %v on minor %s.", f.GetFileInfo(), h.Name())
 		}
 
 		tf.minorFile = f
@@ -67,7 +67,7 @@ func (h *TeeHandler) Open(id string, domain int64) (DFSFile, error) {
 				Name:  "opened",
 				Value: 1.0,
 			}
-			glog.V(3).Infof("Open file %s on minor %s.", tf.minorFile.GetFileInfo().Name, h.Name())
+			glog.V(3).Infof("Open file %v on minor %s.", tf.minorFile.GetFileInfo(), h.Name())
 
 			// How to deal with 'file not found'?
 			return tf, nil
@@ -96,7 +96,6 @@ func (h *TeeHandler) Duplicate(oid string, domain int64) (string, error) {
 				Name:  "duplicate_failed",
 				Value: 1.0,
 			}
-			glog.Warningf("Failed to duplicate %s with id %s on minor, %v.", oid, did, err)
 		} else {
 			instrument.MinorFileCounter <- &instrument.Measurements{
 				Name:  "duplicated",
@@ -121,13 +120,12 @@ func (h *TeeHandler) Remove(id string, domain int64) (bool, *meta.File, error) {
 		return result, meta, err
 	}
 
-	_, _, er := h.minor.Remove(id, domain)
-	if er != nil {
+	_, _, err = h.minor.Remove(id, domain)
+	if err != nil {
 		instrument.MinorFileCounter <- &instrument.Measurements{
 			Name:  "remove_failed",
 			Value: 1.0,
 		}
-		glog.Warningf("Failed to remove file %s from minor, %s.", id, er)
 	} else {
 		instrument.MinorFileCounter <- &instrument.Measurements{
 			Name:  "removed",

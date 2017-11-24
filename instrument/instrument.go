@@ -75,6 +75,18 @@ var (
 	)
 	SuccessDuration = make(chan *Measurements, *metricsBufSize)
 
+	// notFoundCounter instruments number of file not found.
+	notFoundCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "not_found",
+			Help:      "Not Found.",
+		},
+		[]string{"service"},
+	)
+	NotFoundCounter = make(chan *Measurements, *metricsBufSize)
+
 	// failCounter instruments number of failed.
 	failCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -311,6 +323,8 @@ func StartMetrics() {
 					asyncSavingGauge.WithLabelValues(m.Name).Add(m.Value)
 				case m := <-FailedCounter:
 					failCounter.WithLabelValues(m.Name).Inc()
+				case m := <-NotFoundCounter:
+					notFoundCounter.WithLabelValues(m.Name).Inc()
 				case m := <-NoDeadlineCounter:
 					noDeadlineCounter.WithLabelValues(m.Name).Inc()
 				case m := <-TimeoutHistogram:

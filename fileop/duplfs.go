@@ -1,7 +1,6 @@
 package fileop
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -11,10 +10,6 @@ import (
 	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/util"
-)
-
-var (
-	FileNotFound = errors.New("file not found")
 )
 
 type DuplFs struct {
@@ -38,14 +33,14 @@ func (duplfs *DuplFs) FindByMd5(gridfs *mgo.GridFS, md5 string, domain int64, si
 		return file, nil
 	}
 
-	return nil, FileNotFound
+	return nil, meta.FileNotFound
 }
 
 // Find finds a file with given id.
 func (duplfs *DuplFs) Find(gridfs *mgo.GridFS, givenId string) (f *mgo.GridFile, err error) {
 	defer func() {
 		if err == mgo.ErrNotFound {
-			err = FileNotFound
+			err = meta.FileNotFound
 		}
 	}()
 
@@ -68,7 +63,7 @@ func (duplfs *DuplFs) Find(gridfs *mgo.GridFS, givenId string) (f *mgo.GridFile,
 		return
 	}
 
-	err = FileNotFound
+	err = meta.FileNotFound
 	return
 }
 
@@ -93,7 +88,7 @@ func (duplfs *DuplFs) search(gridfs *mgo.GridFS, fid string) (*mgo.GridFile, err
 		return nil, err
 	}
 	if dupl == nil || !dupl.Ref.Valid() {
-		return nil, FileNotFound
+		return nil, meta.FileNotFound
 	}
 
 	return gridfs.OpenId(dupl.Ref)
@@ -291,7 +286,7 @@ func LookupFileMeta(gridfs *mgo.GridFS, query bson.D) (*meta.File, error) {
 		}
 	}
 
-	return nil, FileNotFound
+	return nil, meta.FileNotFound
 }
 
 func hexString2ObjectId(hex string) (*bson.ObjectId, error) {

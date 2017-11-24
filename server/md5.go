@@ -7,6 +7,7 @@ import (
 	"golang.org/x/net/context"
 
 	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/util"
@@ -201,7 +202,7 @@ func (s *DFSServer) findByMd5(md5 string, domain int64, size int64) (fileop.DFSF
 					return nil, "", err // Not found in m and n.
 				}
 			} else {
-				return nil, "", fileop.FileNotFound // Never reachs this line.
+				return nil, "", meta.FileNotFound // Never reachs this line.
 			}
 		}
 	} else if nh != nil {

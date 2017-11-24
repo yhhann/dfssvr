@@ -9,6 +9,8 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/relops/cqlr"
 	"gopkg.in/mgo.v2/bson"
+
+	"jingoal.com/dfs/meta"
 )
 
 const (
@@ -44,17 +46,12 @@ const (
 	cqlRemoveRef         = `DELETE FROM rc WHERE id = ?`
 	cqlUpdateRefCnt      = `UPDATE rc SET refcnt = refcnt + %d WHERE id = ?`
 	cqlLookupFileById    = `SELECT * FROM files WHERE id = ?`
-	calLookupFileByMd5   = `SELECT * FROM md5 WHERE md5 = ?`
+	calLookupFileByMd5   = `SELECT * FROM md5 WHERE md5 = ? AND domain = ?`
 	cqlSaveFile          = `INSERT INTO files (id, biz, cksize, domain, fn, size, md5, udate, uid, type, attrs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	cqlRemoveFile        = `DELETE FROM files WHERE id = ?`
 
 	cqlTouchHealth = `INSERT INTO health (id, magic) VALUES (?, ?)`
 	cqlCheckHealth = `SELECT * FROM health WHERE id = ?`
-)
-
-var (
-	FileNotFound      = errors.New("file not found")
-	FileAlreadyExists = errors.New("file already exists")
 )
 
 // Type of storage which stores file content.
@@ -258,7 +255,7 @@ func (op *DraOpImpl) LookupFileById(id string) (*File, error) {
 
 		if len(f.Id) == 0 {
 			f = nil
-			return FileNotFound
+			return meta.FileNotFound
 		}
 
 		return nil
@@ -275,28 +272,18 @@ func (op *DraOpImpl) LookupFileById(id string) (*File, error) {
 func (op *DraOpImpl) LookupFileByMd5(md5 string, domain int64) (*File, error) {
 	f := &File{}
 	err := op.execute(func(session *gocql.Session) error {
-		q := session.Query(calLookupFileByMd5, md5)
+		q := session.Query(calLookupFileByMd5, md5, domain)
 		b := cqlr.BindQuery(q)
 		defer b.Close()
-		for b.Scan(f) {
-			if f.Domain == domain {
-				break
-			}
+
+		if b.Scan(f) {
+			return nil
 		}
 
-		if len(f.Id) == 0 {
-			f = nil
-			return FileNotFound
-		}
-
-		return nil
+		return meta.FileNotFound
 	})
 
-	if err != nil {
-		return nil, err
-	}
-
-	return f, nil
+	return f, err
 }
 
 // SaveFile saves a file.
@@ -378,6 +365,8 @@ func NewDraOpImpl(seeds []string, sqlOptions ...func(*DraOpImpl)) *DraOpImpl {
 	self := &DraOpImpl{
 		ClusterConfig: gocql.NewCluster(seeds...),
 	}
+
+	self.ClusterConfig.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
 
 	for _, option := range sqlOptions {
 		option(self)

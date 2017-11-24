@@ -1,6 +1,7 @@
 package cassandra
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -9,6 +10,10 @@ import (
 
 	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/util"
+)
+
+var (
+	FileAlreadyExists = errors.New("file already exists")
 )
 
 var (

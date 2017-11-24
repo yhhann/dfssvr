@@ -38,7 +38,7 @@ func (dupldra *DuplDra) Find(fid string) (*meta.File, error) {
 		return nil, err
 	}
 	if draFile == nil {
-		return nil, FileNotFound
+		return nil, meta.FileNotFound
 	}
 
 	return MetaFile(draFile), nil
@@ -55,7 +55,7 @@ func (dupldra *DuplDra) search(givenId string) (*File, error) {
 	}
 
 	if dupl == nil {
-		return nil, FileNotFound
+		return nil, meta.FileNotFound
 	}
 
 	return dupldra.LookupFileById(dupl.Ref)

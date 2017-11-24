@@ -6,7 +6,7 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
-	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/proto/transfer"
 )
 
@@ -53,7 +53,7 @@ func (s *DFSServer) Exist(ctx context.Context, req *transfer.ExistReq) (result *
 
 func (s *DFSServer) exist(id string, domain int64) (result bool, err error) {
 	defer func() {
-		if err == fileop.FileNotFound {
+		if err == meta.FileNotFound {
 			result, err = false, nil
 		}
 	}()

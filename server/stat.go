@@ -6,7 +6,7 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
-	"jingoal.com/dfs/fileop"
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/proto/transfer"
 )
 
@@ -62,7 +62,7 @@ func (s *DFSServer) statBiz(c interface{}, r interface{}, args []interface{}) (i
 	}
 
 	if info == nil {
-		return mf, fileop.FileNotFound
+		return mf, meta.FileNotFound
 	}
 
 	info.Domain = req.Domain

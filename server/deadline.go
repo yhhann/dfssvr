@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/transport"
 
-	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/instrument"
+	"jingoal.com/dfs/meta"
 )
 
 var (
@@ -106,21 +106,17 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 				Name:  fmt.Sprintf("%d", se.Code),
 				Value: me.Value,
 			}
-			glog.Infof("%s error %v, in %.9f seconds, %s.", serviceName, se, elapse.Seconds(), <-msgChan)
+			glog.Warningf("%s error %v, in %.9f seconds, %s.", serviceName, se, elapse.Seconds(), <-msgChan)
 			if se.Code == codes.DeadlineExceeded || se.Code == codes.Canceled {
 				instrument.TimeoutHistogram <- me
 			}
 		} else if e != nil {
-			if e != fileop.FileNotFound {
-				instrument.FailedCounter <- me
-				glog.Infof("%s error %v, in %.9f seconds, %s.", serviceName, e, elapse.Seconds(), <-msgChan)
+			if e == meta.FileNotFound {
+				instrument.NotFoundCounter <- me
+				glog.Warningf("%s finished in %.9f seconds, not found, %s.", serviceName, elapse.Seconds(), <-msgChan)
 			} else {
-				instrument.SuccessDuration <- me
-				if elapse > *logElapseThreshold {
-					glog.Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
-				} else {
-					glog.V(glog.Level(*logLevelThreshold)).Infof("%s finished in %.9f seconds, %s.", serviceName, elapse.Seconds(), <-msgChan)
-				}
+				instrument.FailedCounter <- me
+				glog.Warningf("%s error %v, in %.9f seconds, %s.", serviceName, e, elapse.Seconds(), <-msgChan)
 			}
 		} else {
 			instrument.SuccessDuration <- me

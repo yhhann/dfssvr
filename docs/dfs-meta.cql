@@ -2,39 +2,41 @@
 CREATE KEYSPACE dfs WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : 3};
 
 CREATE TABLE dupl (
-	id text,
-	refid text,
-	size bigint,
-	domain bigint,
-	cdate timestamp,
-	PRIMARY KEY(id)
-);
+    id text,
+    refid text,
+    size bigint,
+    omain bigint,
+    date timestamp,
+    RIMARY KEY(id)
+) WITH compaction = {'class': 'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'};
 
 CREATE TABLE rc (
-	id text,
-	refcnt counter,
-	PRIMARY KEY(id)
-);
+    id text,
+    refcnt counter,
+    PRIMARY KEY(id)
+) WITH compaction = {'class': 'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'};
 
-CREATE TABLE files (
-	id text,
-	domain bigint,
-	size bigint,
-	md5 text,
-	cksize int,
-	biz text,
-	fn text,
-	udate timestamp,
-	uid text,
-	attrs map<text, text>,
-	type tinyint,
-	PRIMARY KEY(id)
-);
+CREATE TABLE dfs.files (
+    id text,
+    domain bigint,
+    attrs map<text, text>,
+    biz text,
+    cksize int,
+    fn text,
+    md5 text,
+    size bigint,
+    type tinyint,
+    udate timestamp,
+    uid text,
+    PRIMARY KEY (id, domain)
+) WITH compaction = {'class': 'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'};
 
-CREATE MATERIALIZED VIEW md5 AS
-  SELECT * FROM files
-  WHERE id IS NOT NULL AND md5 IS NOT NULL
-  PRIMARY KEY (md5, id);
+CREATE MATERIALIZED VIEW dfs.md5a AS
+    SELECT *
+    FROM dfs.files
+    WHERE id IS NOT NULL AND md5 IS NOT NULL AND domain IS NOT NULL
+    PRIMARY KEY (md5, domain, id)
+    WITH compaction = {'class': 'org.apache.cassandra.db.compaction.LeveledCompactionStrategy'};
 
 CREATE TABLE health (
     id text,

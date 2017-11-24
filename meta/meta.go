@@ -1,6 +1,9 @@
 package meta
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 const (
 	EntityNone EntityType = iota
@@ -43,3 +46,8 @@ type FileMetaOp interface {
 	// Delete deletes a file.
 	Delete(fid string) (tobeDeleted bool, entityIdToBeDeleted string, err error)
 }
+
+var (
+	FileNotFound      = errors.New("file not found")
+	FileAlreadyExists = errors.New("file already exists")
+)

@@ -9,6 +9,7 @@ import (
 
 	"jingoal.com/dfs/fileop"
 	"jingoal.com/dfs/instrument"
+	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/util"
@@ -47,7 +48,7 @@ func (s *DFSServer) getFileStream(request interface{}, grpcStream interface{}, a
 
 	_, file, err := s.openFileForRead(req.Id, req.Domain)
 	if err != nil {
-		if err == fileop.FileNotFound {
+		if err == meta.FileNotFound {
 			event := &metadata.Event{
 				EType:       metadata.FailRead,
 				Timestamp:   util.GetTimeInMilliSecond(),

@@ -304,6 +304,8 @@ func (f SeadraFile) Close() error {
 			weedfs.Remove(f.meta.ExtAttr[MetaKey_WeedFid], f.meta.Domain, f.handler.Shard.MasterUri)
 			return err
 		}
+
+		glog.V(3).Infof("Save a seadra %v.", f.meta)
 	}
 
 	return nil

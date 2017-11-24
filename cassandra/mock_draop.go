@@ -4,9 +4,8 @@
 package cassandra
 
 import (
-	reflect "reflect"
-
 	gomock "github.com/golang/mock/gomock"
+	reflect "reflect"
 )
 
 // MockDraOp is a mock of DraOp interface
@@ -192,4 +191,16 @@ func (_m *MockDraOp) DecRefCnt(id string) (*Ref, error) {
 // DecRefCnt indicates an expected call of DecRefCnt
 func (_mr *MockDraOpMockRecorder) DecRefCnt(arg0 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "DecRefCnt", reflect.TypeOf((*MockDraOp)(nil).DecRefCnt), arg0)
+}
+
+// HealthCheck mocks base method
+func (_m *MockDraOp) HealthCheck(node string) error {
+	ret := _m.ctrl.Call(_m, "HealthCheck", node)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// HealthCheck indicates an expected call of HealthCheck
+func (_mr *MockDraOpMockRecorder) HealthCheck(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "HealthCheck", reflect.TypeOf((*MockDraOp)(nil).HealthCheck), arg0)
 }
