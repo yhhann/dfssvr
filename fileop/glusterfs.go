@@ -119,8 +119,14 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) 
 
 	oid, ok := gridFile.Id().(bson.ObjectId)
 	if !ok {
-		err = fmt.Errorf("Invalid id, %T, %v", gridFile.Id(), gridFile.Id())
+		gridFile.Close()
+		err = fmt.Errorf("Invalid ObjectId, %T, %v", gridFile.Id(), gridFile.Id())
 		return
+	}
+
+	if bson.IsObjectIdHex(info.Id) {
+		oid = bson.ObjectIdHex(info.Id)
+		gridFile.SetId(oid)
 	}
 
 	// For compatible with dfs 1.0.

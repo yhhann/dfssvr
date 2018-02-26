@@ -70,8 +70,13 @@ func (h *GridFsHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 	oid, ok := file.Id().(bson.ObjectId)
 	if !ok {
 		file.Close()
-		err = fmt.Errorf("id %v is not an ObjectId", file.Id())
+		err = fmt.Errorf("Invalid ObjectId, %T, %v", file.Id(), file.Id())
 		return
+	}
+
+	if bson.IsObjectIdHex(info.Id) {
+		oid = bson.ObjectIdHex(info.Id)
+		file.SetId(oid)
 	}
 
 	// Make a copy of file info to hold information of file.
