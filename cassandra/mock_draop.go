@@ -4,8 +4,9 @@
 package cassandra
 
 import (
-	gomock "github.com/golang/mock/gomock"
 	reflect "reflect"
+
+	gomock "github.com/golang/mock/gomock"
 )
 
 // MockDraOp is a mock of DraOp interface
