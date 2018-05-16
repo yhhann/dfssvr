@@ -172,7 +172,7 @@ func openMongoSession(uri string) (*mgo.Session, error) {
 	}
 
 	if len(info.Addrs) > 1 {
-		session.SetSafe(&mgo.Safe{W: len(info.Addrs), FSync: true})
+		session.SetSafe(&mgo.Safe{WMode: "majority", FSync: true})
 	} else {
 		session.SetSafe(&mgo.Safe{FSync: true})
 	}
