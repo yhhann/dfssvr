@@ -9,7 +9,6 @@ go_binary(
         ["*.go"],
         exclude = ["*_test.go"],
     ),
-    linkstamp = "jingoal.com/letsgo/version",
     x_defs = {
         "main.buildTime": "2016/06/30_00:00",
     },
