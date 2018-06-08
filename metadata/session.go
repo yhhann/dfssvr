@@ -179,7 +179,7 @@ func openMongoSession(uri string) (*mgo.Session, error) {
 
 	// for compatible with dfs 1.x.
 	if info.SlaveOk {
-		session.SetMode(mgo.Eventual, true)
+		session.SetMode(mgo.PrimaryPreferred, true)
 	} else {
 		session.SetMode(mgo.Strong, true)
 	}
