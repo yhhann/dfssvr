@@ -331,3 +331,8 @@ func getFileMeta(m *meta.File) *DFSFileMeta {
 		Fid:       m.ExtAttr[MetaKey_WeedFid],
 	}
 }
+
+// hasEntity returns if the file has entity.
+func (f SeadraFile) hasEntity() bool {
+	return true
+}

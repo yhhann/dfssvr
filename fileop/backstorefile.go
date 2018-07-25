@@ -3,6 +3,7 @@ package fileop
 import (
 	"flag"
 	"strings"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -27,44 +28,82 @@ type BackStoreHandler struct {
 
 	// shard for back store
 	BackStoreShard *metadata.Shard
+
+	// cahce log operator
+	logOp *metadata.CacheLogOp
 }
 
 // Create creates a DFSFile for write
 func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 	originalFile, err := bsh.DFSFileHandler.Create(info)
+	if _, ok := err.(CreateFileError); ok {
+		if !isWriteToBackStore(info.Domain) {
+			return nil, err
+		}
+
+		wFile, er := bsh.createCacheFile(info, originalFile)
+		if er != nil {
+			return nil, er
+		}
+
+		// log event.
+		createInfo := originalFile.GetFileInfo()
+		cachelog := metadata.CacheLog{
+			Timestamp:      time.Now().Unix(),
+			Domain:         createInfo.Domain,
+			Fid:            createInfo.Id,
+			CacheId:        wFile.Fid,
+			CacheChunkSize: wFile.GetChunkSize(),
+		}
+		_, er = bsh.logOp.SaveOrUpdate(&cachelog)
+		if er != nil {
+			glog.Warningf("Failed to save cache log %+v, %v", cachelog, er)
+		}
+
+		glog.Warningf("Failed to create %v, %v, cache it %v", originalFile.GetFileInfo(), err, cachelog)
+		return NewBackStoreFile(wFile, originalFile, createInfo), nil
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	var wFile *weedfs.WeedFile
 	if isWriteToBackStore(info.Domain) {
-		fn := ""
-		if *bsWithRealName {
-			fn = info.Name
-			glog.V(5).Infof("Create backstore file with real name %s.", fn)
-		}
-		wFile, err = weedfs.Create(fn, info.Domain, bsh.BackStoreShard.MasterUri, bsh.BackStoreShard.Replica, bsh.BackStoreShard.DataCenter, bsh.BackStoreShard.Rack, NegotiatedChunkSize)
+		wFile, err = bsh.createCacheFile(info, originalFile)
 		if err != nil {
-			instrument.BackstoreFileCounter <- &instrument.Measurements{
-				Name:  "create_failed",
-				Value: 1.0,
-			}
-			glog.Warningf("Failed to create file %v", err)
 			return NewBackStoreFile(nil, originalFile, info), nil
 		}
-
-		originalFile.updateFileMeta(map[string]interface{}{
-			MetaKey_WeedFid:   wFile.Fid,
-			MetaKey_Chunksize: wFile.GetChunkSize(),
-		})
-		instrument.BackstoreFileCounter <- &instrument.Measurements{
-			Name:  "created",
-			Value: 1.0,
-		}
-		glog.V(3).Infof("Succeeded to create backstore file: %s, %s", wFile.Fid, info.Name)
 	}
 
 	return NewBackStoreFile(wFile, originalFile, info), nil
+}
+
+func (bsh *BackStoreHandler) createCacheFile(info *transfer.FileInfo, originalFile DFSFile) (*weedfs.WeedFile, error) {
+	fn := ""
+	if *bsWithRealName {
+		fn = info.Name
+	}
+	wFile, err := weedfs.Create(fn, info.Domain, bsh.BackStoreShard.MasterUri, bsh.BackStoreShard.Replica, bsh.BackStoreShard.DataCenter, bsh.BackStoreShard.Rack, NegotiatedChunkSize)
+	if err != nil {
+		instrument.BackstoreFileCounter <- &instrument.Measurements{
+			Name:  "create_failed",
+			Value: 1.0,
+		}
+		glog.Warningf("Failed to create wfile %v", err)
+		return nil, err
+	}
+
+	originalFile.updateFileMeta(map[string]interface{}{
+		MetaKey_WeedFid:   wFile.Fid,
+		MetaKey_Chunksize: wFile.GetChunkSize(),
+	})
+	instrument.BackstoreFileCounter <- &instrument.Measurements{
+		Name:  "created",
+		Value: 1.0,
+	}
+	glog.V(3).Infof("Succeeded to create backstore file: %s, %s", wFile.Fid, info.Name)
+
+	return wFile, nil
 }
 
 // Open opens a DFSFile for read
@@ -181,10 +220,11 @@ func (bsh *BackStoreHandler) FindByMd5(md5 string, domain int64, size int64) (st
 	return bsh.DFSFileHandler.FindByMd5(md5, domain, size)
 }
 
-func NewBackStoreHandler(originalHandler DFSFileHandler, bsShard *metadata.Shard) *BackStoreHandler {
+func NewBackStoreHandler(originalHandler DFSFileHandler, bsShard *metadata.Shard, logOp *metadata.CacheLogOp) *BackStoreHandler {
 	handler := BackStoreHandler{
 		DFSFileHandler: originalHandler,
 		BackStoreShard: bsShard,
+		logOp:          logOp,
 	}
 
 	return &handler
@@ -213,11 +253,14 @@ func (d *BackStoreFile) GetFileInfo() *transfer.FileInfo {
 
 // Write writes a byte buffer into back store file.
 func (d *BackStoreFile) Write(p []byte) (n int, err error) {
-	n, err = d.DFSFile.Write(p)
+	if d.DFSFile != nil {
+		n, err = d.DFSFile.Write(p)
+	}
 
 	if d.bs != nil && d.bsErr == nil {
 		_, d.bsErr = d.bs.Write(p)
 	}
+
 	return
 }
 
@@ -231,7 +274,11 @@ func (d *BackStoreFile) Read(p []byte) (n int, err error) {
 		return
 	}
 
-	return d.DFSFile.Read(p)
+	if d.DFSFile != nil {
+		return d.DFSFile.Read(p)
+	}
+
+	return 0, NoEntityError
 }
 
 // Close closes a back store file.
@@ -245,6 +292,11 @@ func (d *BackStoreFile) Close() (err error) {
 	}
 
 	return
+}
+
+// hasEntity returns if the file has entity.
+func (d *BackStoreFile) hasEntity() bool {
+	return true
 }
 
 // NewBackStoreFile creates a new back store file.

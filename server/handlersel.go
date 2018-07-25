@@ -190,7 +190,7 @@ func (hs *HandlerSelector) addHandler(shard *metadata.Shard) (err error) {
 	}
 
 	if hs.backStoreShard != nil {
-		handler = fileop.NewBackStoreHandler(handler, hs.backStoreShard)
+		handler = fileop.NewBackStoreHandler(handler, hs.backStoreShard, hs.dfsServer.cacheOp)
 		glog.Infof("Succeeded to attach handler '%s' with bs '%s'.", handler.Name(), hs.backStoreShard.Name)
 	}
 

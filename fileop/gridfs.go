@@ -363,3 +363,8 @@ func getDFSFileMeta(g *mgo.GridFile) (*DFSFileMeta, error) {
 
 	return gridMeta, nil
 }
+
+// hasEntity returns if the file has entity.
+func (f GridFsFile) hasEntity() bool {
+	return true
+}

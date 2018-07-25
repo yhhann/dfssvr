@@ -269,3 +269,8 @@ func (f *TeeFile) Close() (err error) {
 
 	return
 }
+
+// hasEntity returns if the file has entity.
+func (f *TeeFile) hasEntity() bool {
+	return true
+}

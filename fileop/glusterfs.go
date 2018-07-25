@@ -108,7 +108,9 @@ func (h *GlusterHandler) ensureReleaseSession(session *mgo.Session) {
 func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
 	defer func() {
-		h.releaseSession(session, err)
+		if _, ok := err.(CreateFileError); !ok {
+			h.releaseSession(session, err)
+		}
 	}()
 
 	gridFile, er := gridfs.Create(info.Name)
@@ -134,28 +136,52 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) 
 	// but in go is 255k. So we must reset it to 256k.
 	gridFile.SetChunkSize(256 * 1024)
 
-	filePath := util.GetFilePath(h.VolBase, info.Domain, oid.Hex(), h.PathVersion, h.PathDigit)
-	dir := filepath.Dir(filePath)
-	if err = h.Volume.MkdirAll(dir, 0755); err != nil && !os.IsExist(err) {
-		return
-	}
-
-	var file *GlusterFile
-	file, err = h.createGlusterFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	file.grf = gridFile
-	file.session = session
-	file.gridfs = gridfs
-
 	// Make a copy of file info to hold information of file.
 	inf := *info
 	inf.Id = oid.Hex()
 	inf.Size = 0
-	file.info = &inf
 
+	file := &GlusterFile{
+		md5:     md5.New(),
+		mode:    FileModeWrite,
+		handler: h,
+		meta:    make(map[string]interface{}),
+		grf:     gridFile,
+		session: session,
+		gridfs:  gridfs,
+		info:    &inf,
+	}
 	f = file
+
+	// for debug
+	if glog.V(10) {
+		err = CreateFileError{
+			Code: GlusterFSCreateFileError,
+			Orig: fmt.Errorf("For debug"),
+		}
+		return
+	}
+
+	filePath := util.GetFilePath(h.VolBase, info.Domain, oid.Hex(), h.PathVersion, h.PathDigit)
+	dir := filepath.Dir(filePath)
+	if er = h.Volume.MkdirAll(dir, 0755); er != nil && !os.IsExist(er) {
+		glog.Warningf("Failed to create glusterfs dir, %s, %v", dir, er)
+		err = CreateFileError{
+			Code: GlusterFSCreateFileError,
+			Orig: er,
+		}
+		return
+	}
+
+	file.glf, er = h.Volume.Create(filePath)
+	if er != nil {
+		glog.Warningf("Failed to create glusterfs file, %s, %v", filePath, er)
+		err = CreateFileError{
+			Code: GlusterFSCreateFileError,
+			Orig: er,
+		}
+		return
+	}
 
 	return
 }
@@ -424,6 +450,10 @@ func (f GlusterFile) getFileMeta() *DFSFileMeta {
 // Read reads atmost len(p) bytes into p.
 // Returns number of bytes read and an error if any.
 func (f GlusterFile) Read(p []byte) (int, error) {
+	if !f.hasEntity() {
+		return 0, NoEntityError
+	}
+
 	nr, er := f.glf.Read(p)
 	// When reached EOF, glf returns nr=0 other than er=io.EOF, fix it.
 	if nr <= 0 {
@@ -435,18 +465,24 @@ func (f GlusterFile) Read(p []byte) (int, error) {
 // Write writes len(p) bytes to the file.
 // Returns number of bytes written and an error if any.
 func (f GlusterFile) Write(p []byte) (int, error) {
-	if len(p) == 0 { // fix bug of gfapi.
-		return 0, nil
+	n := 0
+	if f.hasEntity() {
+		// if len(p) is zero, glf.Write() will panic.
+		if len(p) == 0 { // fix bug of gfapi.
+			return 0, nil
+		}
+
+		var err error
+		n, err = f.glf.Write(p)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		n = len(p)
 	}
 
-	// if len(p) is zero, glf.Write() will panic.
-	n, err := f.glf.Write(p)
-	if err != nil {
-		return 0, err
-	}
-
-	f.md5.Write(p)
 	f.info.Size += int64(n)
+	f.md5.Write(p)
 
 	return n, nil
 }
@@ -454,6 +490,7 @@ func (f GlusterFile) Write(p []byte) (int, error) {
 // Close closes an open GlusterFile.
 // Returns an error on failure.
 func (f GlusterFile) Close() error {
+	glog.Infof("GlusterFS close %v", f.info)
 	defer func() {
 		f.gridfs = nil
 		if f.session != nil {
@@ -461,8 +498,10 @@ func (f GlusterFile) Close() error {
 		}
 	}()
 
-	if err := f.glf.Close(); err != nil {
-		return err
+	if f.hasEntity() {
+		if err := f.glf.Close(); err != nil {
+			return err
+		}
 	}
 
 	if f.mode == FileModeWrite {
@@ -478,6 +517,7 @@ func (f GlusterFile) Close() error {
 		return f.updateMetadata()
 	}
 
+	glog.Infof("GlusterFS closed %v", f.info)
 	return nil
 }
 
@@ -518,4 +558,9 @@ func (f GlusterFile) additionalMetadata() bson.D {
 	})
 
 	return opdata
+}
+
+// hasEntity returns if the file has entity.
+func (f GlusterFile) hasEntity() bool {
+	return f.glf != nil
 }

@@ -425,3 +425,8 @@ func (f GlustraFile) getFileMeta() *DFSFileMeta {
 		ChunkSize: ck,
 	}
 }
+
+// hasEntity returns if the file has entity.
+func (f GlustraFile) hasEntity() bool {
+	return f.glf != nil
+}

@@ -54,6 +54,7 @@ type DFSServer struct {
 	mOp      metadata.MetaOp
 	spaceOp  *metadata.SpaceLogOp
 	eventOp  *metadata.EventOp
+	cacheOp  *metadata.CacheLogOp
 	reOp     *recovery.RecoveryEventOp
 	register disc.Register
 	notice   notice.Notice
@@ -90,6 +91,9 @@ func (s *DFSServer) Close() {
 	}
 	if s.reOp != nil {
 		s.reOp.Close()
+	}
+	if s.cacheOp != nil {
+		s.cacheOp.Close()
 	}
 	if s.notice != nil {
 		s.notice.CloseZk()
@@ -168,6 +172,12 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zk *notice.DfsZ
 		return nil, fmt.Errorf("%v, %s %s", err, dbAddr.EventDbName, dbAddr.EventDbUri)
 	}
 	server.eventOp = eventOp
+
+	cacheOp, err := metadata.NewCacheLogOp(dbAddr.EventDbName, dbAddr.EventDbUri)
+	if err != nil {
+		return nil, fmt.Errorf("%v, %s %s", err, dbAddr.EventDbName, dbAddr.EventDbUri)
+	}
+	server.cacheOp = cacheOp
 
 	// Create NewMongoMetaOp
 	mop, err := metadata.NewMongoMetaOp(dbAddr.ShardDbName, dbAddr.ShardDbUri)

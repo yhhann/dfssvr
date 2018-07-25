@@ -39,6 +39,9 @@ type DFSFile interface {
 
 	// getFileMeta returns file dfs meta.
 	getFileMeta() *DFSFileMeta
+
+	// hasEntity returns if the file has entity.
+	hasEntity() bool
 }
 
 // DFSFileHandler represents the file handler of underlying storage.
