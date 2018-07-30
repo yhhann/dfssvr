@@ -8,12 +8,16 @@ const (
 
 	// Flag to enable/disable read from back store.
 	FlagKeyReadFromBackStore = "read_from_backstore"
+
+	// Flag to enable/disable cache file when write error.
+	FlagKeyCacheFile = "cachefile"
 )
 
 func init() {
 	features = make(map[string]*FeatureFlag)
 
 	initBackStoreFlag()
+	initCacheFileFlag()
 	initTeeFlag()
 }
 
@@ -28,6 +32,16 @@ func initBackStoreFlag() {
 
 	PutFlag(&FeatureFlag{
 		Key:        FlagKeyReadFromBackStore,
+		Enabled:    false,
+		Domains:    []uint32{},
+		Groups:     []string{},
+		Percentage: uint32(0),
+	})
+}
+
+func initCacheFileFlag() {
+	PutFlag(&FeatureFlag{
+		Key:        FlagKeyCacheFile,
 		Enabled:    false,
 		Domains:    []uint32{},
 		Groups:     []string{},

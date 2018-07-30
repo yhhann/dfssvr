@@ -3,6 +3,7 @@ package server
 import (
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"path/filepath"
 	"strconv"
@@ -380,7 +381,7 @@ func (hs *HandlerSelector) startShardNoticeRoutine() {
 }
 
 // startRecoveryRoutine starts a recovery routine for every handler.
-func (hs *HandlerSelector) startRevoveryDispatchRoutine() {
+func (hs *HandlerSelector) startRecoveryDispatchRoutine() {
 	go func() {
 		ticker := time.NewTicker(time.Duration(*recoveryInterval) * time.Second)
 		defer ticker.Stop()
@@ -394,6 +395,85 @@ func (hs *HandlerSelector) startRevoveryDispatchRoutine() {
 				}
 			}
 		}
+	}()
+}
+
+// startCachedFileRecoveryRoutine() starts a recovery routine for cached file.
+func (hs *HandlerSelector) startCachedFileRecoveryRoutine() {
+	if hs.backStoreShard == nil {
+		glog.Warningln("No need to start cached file recovery routine without backstore.")
+		return
+	}
+
+	cacheOp := hs.dfsServer.cacheOp
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(*recoveryInterval) * time.Second)
+		defer ticker.Stop()
+		glog.Infof("Succeeded to start cached file recovery routine, triggered every %d seconds.", *recoveryInterval)
+
+		for {
+			select {
+			case <-ticker.C:
+
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							glog.Warningf("%v\n%s", r, getStack())
+						}
+					}()
+
+					iter, err := cacheOp.GetCacheLogs(10 /* limit */)
+					if err != nil {
+						glog.Warningf("Failed to fetch cached log %v", err)
+						return
+					}
+					defer iter.Close()
+
+					cachelog := metadata.CacheLog{}
+					for iter.Next(&cachelog) {
+						handler, err := hs.getDFSFileHandlerForWrite(cachelog.Domain)
+						if err != nil {
+							glog.Warningf("Failed to get file handler for %s", cachelog)
+							continue
+						}
+
+						backstoreHandler, ok := interface{}(*handler).(*fileop.BackStoreHandler)
+						if !ok {
+							glog.Warningf("Not a BackStoreHandler%T, %s", *handler, cachelog)
+							continue
+						}
+						glusterHandler, ok := interface{}((*backstoreHandler).DFSFileHandler).(*fileop.GlusterHandler)
+						if !ok {
+							glog.Warningf("Not a GlusterHandler %T, %s", (*backstoreHandler).DFSFileHandler, cachelog)
+							continue
+						}
+
+						copyCachedFile(glusterHandler, hs.backStoreShard.MasterUri, cacheOp, &cachelog)
+					}
+				}()
+
+				glog.V(5).Infof("Finished a recovery round.")
+			}
+		}
+	}()
+
+	// Remove cached log 7 days ago.
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				h := time.Now().Hour()
+				if h >= 1 && h < 2 {
+					glog.Infof("It's time to remove finished cache logs 7 days ago, %d", h)
+					cacheOp.RemoveFinishedCacheLogByTime(time.Now().AddDate(0, 0, -7).Unix())
+				}
+			}
+		}
+
 	}()
 }
 
@@ -659,5 +739,79 @@ func healthCheck(handler fileop.DFSFileHandler) handlerStatus {
 			Value: 1.0,
 		}
 		return statusFailure
+	}
+}
+
+func copyCachedFile(glusterHandler *fileop.GlusterHandler, masterUri string, cacheOp *metadata.CacheLogOp, cachelog *metadata.CacheLog) (state int) {
+	defer func() {
+		switch state {
+		case metadata.CACHELOG_STATE_FINISHED:
+			sum := (cachelog.RetryTimes - 1) * cachelog.RetryTimes / 2
+			instrument.CachedFileRetryTimesGauge.Sub(float64(sum))
+			if instrument.GetRetryTimesFromGauge() <= 0 {
+				instrument.CachedFileRetryTimesGauge.Set(0.0)
+				glog.V(5).Infoln("Reset retry times gauge.")
+			}
+			instrument.CachedFileRetryTimes.Observe(float64(cachelog.RetryTimes - 1))
+			instrument.CachedFileCount.WithLabelValues(instrument.CACHED_FILE_RECOVER_SUC).Inc()
+			glog.Infof("Succeeded to recover cached file %s.", cachelog)
+		case metadata.CACHELOG_STATE_PENDING:
+			instrument.CachedFileRetryTimesGauge.Add(float64(cachelog.RetryTimes))
+			fallthrough
+		default:
+			instrument.CachedFileCount.WithLabelValues(instrument.CACHED_FILE_RECOVER_FAILED).Inc()
+			glog.Warningf("Failed to recover cached file %d, %s.", state, cachelog)
+		}
+	}()
+
+	gFile, err := glusterHandler.CreateGlusterFile(cachelog.Domain, cachelog.Fid)
+
+	// for debug
+	if glog.V(10) {
+		err = fileop.RecoverableFileError{
+			Code: fileop.GlusterFSFileError,
+			Orig: fmt.Errorf("debug when recovering"),
+		}
+	}
+
+	if err != nil {
+		cacheOp.SaveOrUpdate(cachelog)
+		return metadata.CACHELOG_STATE_PENDING
+	}
+	gFile.Close()
+
+	cachedFile, err := fileop.OpenCachedFile(cachelog.CacheId, cachelog.Domain, masterUri, cachelog.CacheChunkSize)
+	if err != nil {
+		cachelog.State = metadata.CACHELOG_STATE_SRC_DAMAGED
+		cacheOp.SaveOrUpdate(cachelog)
+		return metadata.CACHELOG_STATE_SRC_DAMAGED
+	}
+	cachedFile.Close()
+
+	// copy content from cached file to glusterfs file.
+	buf := make([]byte, 4096)
+	for {
+		n, err := cachedFile.Read(buf)
+		if n > 0 {
+			_, err := gFile.Write(buf[:n])
+			if err != nil {
+				_, err := cacheOp.SaveOrUpdate(cachelog)
+				if err != nil {
+					glog.Warningf("Failed to save or update cache log %s.", cachelog)
+				}
+
+				return metadata.CACHELOG_STATE_PENDING
+			}
+		}
+		if err == io.EOF {
+			cachelog.State = metadata.CACHELOG_STATE_FINISHED
+			cacheOp.SaveOrUpdate(cachelog)
+			return metadata.CACHELOG_STATE_FINISHED
+		}
+		if err != nil {
+			cachelog.State = metadata.CACHELOG_STATE_SRC_DAMAGED
+			cacheOp.SaveOrUpdate(cachelog)
+			return metadata.CACHELOG_STATE_SRC_DAMAGED
+		}
 	}
 }

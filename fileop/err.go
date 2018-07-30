@@ -6,18 +6,18 @@ import (
 
 const (
 	_ = iota
-	GlusterFSCreateFileError
+	GlusterFSFileError
 )
 
 var (
 	NoEntityError = fmt.Errorf("no entity")
 )
 
-type CreateFileError struct {
+type RecoverableFileError struct {
 	Code int
 	Orig error
 }
 
-func (e CreateFileError) Error() string {
-	return fmt.Sprintf("file error, code %d, %v", e.Code, e.Orig)
+func (e RecoverableFileError) Error() string {
+	return fmt.Sprintf("recoverable file error, code %d, %v", e.Code, e.Orig)
 }

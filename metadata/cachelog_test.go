@@ -35,8 +35,11 @@ func TestSaveOrUpdate(t *testing.T) {
 		}
 	}
 
-	if err := op.RemoveAllCacheLog(newOplog); err != nil {
-		t.Fatalf("RemoveAllCacheLog error %v", err)
+	cachelog.State = CACHELOG_STATE_FINISHED
+	op.SaveOrUpdate(&cachelog)
+
+	if err := op.RemoveFinishedCacheLogByTime(cachelog.Timestamp + 10); err != nil {
+		t.Fatalf("RemoveFinishedCacheLogByTime error %v", err)
 	}
 
 	if newOplog.RetryTimes != 10 {
@@ -56,9 +59,9 @@ func TestGetCacheLogs(t *testing.T) {
 		Fid:       stableFid,
 	}
 
-	var iterCount int64 = 21
+	var iterCount int = 21
 	newOplog := make([]*CacheLog, iterCount)
-	var i int64
+	var i int
 	for i = 0; i < iterCount; i++ {
 		cachelog.Fid = bson.NewObjectId().Hex()
 		newOplog[i], err = op.SaveOrUpdate(&cachelog)
@@ -67,19 +70,17 @@ func TestGetCacheLogs(t *testing.T) {
 		}
 	}
 
-	iter, err := op.GetCacheLogs()
+	iter, err := op.GetCacheLogs(iterCount)
 	if err != nil {
 		t.Fatalf("GetCacheLogs error %v", err)
 	}
 	defer iter.Close()
 
-	var count int64 = 0
+	var count int = 0
 	var ol CacheLog
 	for iter.Next(&ol) {
 		count++
 	}
-
-	iter.Close()
 
 	glog.Infoln("count ", count)
 	if count != iterCount {
@@ -87,8 +88,11 @@ func TestGetCacheLogs(t *testing.T) {
 	}
 
 	for _, cachelog := range newOplog {
-		if err := op.RemoveAllCacheLog(cachelog); err != nil {
-			t.Fatalf("RemoveAllCacheLog error %v", err)
-		}
+		cachelog.State = CACHELOG_STATE_FINISHED
+		op.SaveOrUpdate(cachelog)
+	}
+
+	if err := op.RemoveFinishedCacheLogByTime(cachelog.Timestamp); err != nil {
+		t.Fatalf("RemoveFinishedCacheLogByTime error %v", err)
 	}
 }

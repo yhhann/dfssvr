@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net/http"
 	_ "net/http/pprof"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -19,6 +20,15 @@ var (
 	metricsAddr    = flag.String("metrics-address", ":2020", "The address to listen on for metrics.")
 	metricsPath    = flag.String("metrics-path", "/dfs-metrics", "The path of metrics.")
 	metricsBufSize = flag.Int("metrics-buf-size", 100000, "Size of metrics buffer")
+
+	ProgramStartTime time.Time
+)
+
+const (
+	// Cached file recovery
+	CACHED_FILE_CACHED_SUC     = "cached_file_cached_suc"
+	CACHED_FILE_RECOVER_SUC    = "cached_file_recover_suc"
+	CACHED_FILE_RECOVER_FAILED = "cached_file_recover_failed"
 )
 
 var (
@@ -285,9 +295,41 @@ var (
 		[]string{"service"},
 	)
 	MergedQuery = make(chan *Measurements, *metricsBufSize)
+
+	// Cached file recovery
+	CachedFileCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "cached_file_count",
+			Help:      "Cached file count",
+		},
+		[]string{"optype"},
+	)
+
+	CachedFileRetryTimes = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "cached_file_retry_times",
+			Help:      "Retry times of cached file",
+			Buckets:   []float64{1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 360.0, 720.0},
+		},
+	)
+
+	CachedFileRetryTimesGauge = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "cached_file_retry_times_gauge",
+			Help:      "Gauge of retry times",
+		},
+	)
 )
 
 func init() {
+	ProgramStartTime = time.Now()
+
 	prometheus.MustRegister(inProcessGauge)
 	prometheus.MustRegister(asyncSavingGauge)
 	prometheus.MustRegister(sucLatency)
@@ -309,6 +351,13 @@ func init() {
 	prometheus.MustRegister(mergedQuery)
 	prometheus.MustRegister(healthCheckStatus)
 	prometheus.MustRegister(grpcErrorByCode)
+	prometheus.MustRegister(CachedFileCount)
+	prometheus.MustRegister(CachedFileRetryTimes)
+	prometheus.MustRegister(CachedFileRetryTimesGauge)
+
+	// initialize
+	CachedFileCount.WithLabelValues(CACHED_FILE_CACHED_SUC).Add(0.0)
+	CachedFileRetryTimesGauge.Set(0.0)
 }
 
 func StartMetrics() {
@@ -393,6 +442,15 @@ func GetTransferRate(method string) (float64, error) {
 func GetInProcess() int {
 	m := &dto.Metric{}
 	if err := inProcessTotal.Write(m); err != nil {
+		return 0
+	}
+
+	return int(m.GetGauge().GetValue())
+}
+
+func GetRetryTimesFromGauge() int {
+	m := &dto.Metric{}
+	if err := CachedFileRetryTimesGauge.Write(m); err != nil {
 		return 0
 	}
 

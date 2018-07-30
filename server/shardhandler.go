@@ -113,7 +113,7 @@ func (sh *ShardHandler) startHealthyCheckRoutine() {
 						if !*HealthCheckManually {
 							sh.hs.updateHandlerStatus(fh, status)
 						}
-						glog.V(4).Infof("Health check, manually %t, handler %v is %s", *HealthCheckManually, fh.Name(), status.String())
+						glog.V(5).Infof("Health check, manually %t, handler %v is %s", *HealthCheckManually, fh.Name(), status.String())
 					}()
 				}
 			case <-sh.healthyCheckRoutineRunning: // stop signal

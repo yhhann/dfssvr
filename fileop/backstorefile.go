@@ -2,6 +2,7 @@ package fileop
 
 import (
 	"flag"
+	"io"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 var (
 	bsWithRealName = flag.Bool("bs-with-real-name", false, "create backstore file with the real name.")
+	cacheDuration  = flag.Duration("cache-duration", 3*time.Hour, "duration for cache file arbitrarily")
 
 	NegotiatedChunkSize = int64(1048576)
 )
@@ -36,11 +38,13 @@ type BackStoreHandler struct {
 // Create creates a DFSFile for write
 func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 	originalFile, err := bsh.DFSFileHandler.Create(info)
-	if _, ok := err.(CreateFileError); ok {
-		if !isWriteToBackStore(info.Domain) {
-			return nil, err
+	if reErr, ok := err.(RecoverableFileError); ok {
+		if !(isCacheFile(info.Domain) ||
+			(isWriteToBackStore(info.Domain) && time.Since(instrument.ProgramStartTime) < *cacheDuration)) {
+			return nil, reErr.Orig
 		}
 
+		glog.Infof("Try to cache file %v, %v", info, reErr.Orig)
 		wFile, er := bsh.createCacheFile(info, originalFile)
 		if er != nil {
 			return nil, er
@@ -54,13 +58,16 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 			Fid:            createInfo.Id,
 			CacheId:        wFile.Fid,
 			CacheChunkSize: wFile.GetChunkSize(),
+			Cause:          reErr.Orig.Error(),
 		}
 		_, er = bsh.logOp.SaveOrUpdate(&cachelog)
 		if er != nil {
 			glog.Warningf("Failed to save cache log %+v, %v", cachelog, er)
+			return nil, er
 		}
 
-		glog.Warningf("Failed to create %v, %v, cache it %v", originalFile.GetFileInfo(), err, cachelog)
+		instrument.CachedFileCount.WithLabelValues(instrument.CACHED_FILE_CACHED_SUC).Inc()
+		glog.Warningf("Cached file %v", cachelog)
 		return NewBackStoreFile(wFile, originalFile, createInfo), nil
 	}
 	if err != nil {
@@ -308,6 +315,15 @@ func NewBackStoreFile(bs *weedfs.WeedFile, file DFSFile, info *transfer.FileInfo
 	}
 }
 
+func OpenCachedFile(fid string, domain int64, masterUri string, chunkSize int64) (io.ReadCloser, error) {
+	wf, err := weedfs.Open(fid, domain, masterUri)
+	if err == nil && chunkSize > 0 {
+		wf.SetChunkSize(chunkSize)
+	}
+
+	return wf, err
+}
+
 func isReadFromBackStore(domain int64) bool {
 	ff, err := conf.GetFlag(conf.FlagKeyReadFromBackStore)
 	if err != nil {
@@ -322,6 +338,16 @@ func isWriteToBackStore(domain int64) bool {
 	ff, err := conf.GetFlag(conf.FlagKeyBackStore)
 	if err != nil {
 		glog.Warningf("feature %s error %v", conf.FlagKeyBackStore, err)
+		return false
+	}
+
+	return ff.DomainHasAccess(uint32(domain))
+}
+
+func isCacheFile(domain int64) bool {
+	ff, err := conf.GetFlag(conf.FlagKeyCacheFile)
+	if err != nil {
+		glog.Warningf("feature %s error %v", conf.FlagKeyCacheFile, err)
 		return false
 	}
 

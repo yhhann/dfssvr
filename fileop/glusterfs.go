@@ -108,7 +108,7 @@ func (h *GlusterHandler) ensureReleaseSession(session *mgo.Session) {
 func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) {
 	session, gridfs := h.copySessionAndGridFS()
 	defer func() {
-		if _, ok := err.(CreateFileError); !ok {
+		if _, ok := err.(RecoverableFileError); !ok {
 			h.releaseSession(session, err)
 		}
 	}()
@@ -155,50 +155,38 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) 
 
 	// for debug
 	if glog.V(10) {
-		err = CreateFileError{
-			Code: GlusterFSCreateFileError,
-			Orig: fmt.Errorf("For debug"),
+		err = RecoverableFileError{
+			Code: GlusterFSFileError,
+			Orig: fmt.Errorf("debug when creating"),
 		}
 		return
 	}
 
-	filePath := util.GetFilePath(h.VolBase, info.Domain, oid.Hex(), h.PathVersion, h.PathDigit)
-	dir := filepath.Dir(filePath)
-	if er = h.Volume.MkdirAll(dir, 0755); er != nil && !os.IsExist(er) {
-		glog.Warningf("Failed to create glusterfs dir, %s, %v", dir, er)
-		err = CreateFileError{
-			Code: GlusterFSCreateFileError,
-			Orig: er,
-		}
-		return
-	}
-
-	file.glf, er = h.Volume.Create(filePath)
-	if er != nil {
-		glog.Warningf("Failed to create glusterfs file, %s, %v", filePath, er)
-		err = CreateFileError{
-			Code: GlusterFSCreateFileError,
-			Orig: er,
-		}
-		return
-	}
-
+	file.glf, err = h.CreateGlusterFile(file.info.Domain, file.info.Id)
 	return
 }
 
-func (h *GlusterHandler) createGlusterFile(name string) (*GlusterFile, error) {
-	f, err := h.Volume.Create(name)
-	if err != nil {
-		return nil, err
+func (h *GlusterHandler) CreateGlusterFile(domain int64, fid string) (*gfapi.File, error) {
+	filePath := util.GetFilePath(h.VolBase, domain, fid, h.PathVersion, h.PathDigit)
+	dir := filepath.Dir(filePath)
+	if err := h.Volume.MkdirAll(dir, 0755); err != nil && !os.IsExist(err) {
+		glog.Warningf("Failed to create glusterfs dir, %s, %v", dir, err)
+		return nil, RecoverableFileError{
+			Code: GlusterFSFileError,
+			Orig: err,
+		}
 	}
 
-	return &GlusterFile{
-		glf:     f,
-		md5:     md5.New(),
-		mode:    FileModeWrite,
-		handler: h,
-		meta:    make(map[string]interface{}),
-	}, nil
+	glf, err := h.Volume.Create(filePath)
+	if err != nil {
+		glog.Warningf("Failed to create glusterfs file, %s, %v", filePath, err)
+		return nil, RecoverableFileError{
+			Code: GlusterFSFileError,
+			Orig: err,
+		}
+	}
+
+	return glf, nil
 }
 
 // Open opens a file for read.

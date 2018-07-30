@@ -205,7 +205,12 @@ func NewDFSServer(lsnAddr net.Addr, name string, dbAddr *DBAddr, zk *notice.DfsZ
 		return nil, err
 	}
 
-	server.selector.startRevoveryDispatchRoutine()
+	p := strings.TrimSpace(*preferred) // borrow a flag
+	if len(p) > 0 {
+		server.selector.startCachedFileRecoveryRoutine()
+	}
+
+	server.selector.startRecoveryDispatchRoutine()
 	server.selector.startShardNoticeRoutine()
 	startRateCheckRoutine()
 
