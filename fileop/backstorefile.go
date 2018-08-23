@@ -44,9 +44,9 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 			return nil, reErr.Orig
 		}
 
-		glog.Infof("Try to cache file %v, %v", info, reErr.Orig)
 		wFile, er := bsh.createCacheFile(info, originalFile)
 		if er != nil {
+			glog.Warningf("Failed to create cache file %v, %v", info, reErr.Orig)
 			return nil, er
 		}
 
@@ -58,6 +58,7 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 			Fid:            createInfo.Id,
 			CacheId:        wFile.Fid,
 			CacheChunkSize: wFile.GetChunkSize(),
+			Shard:          bsh.Name(),
 			Cause:          reErr.Orig.Error(),
 		}
 		_, er = bsh.logOp.SaveOrUpdate(&cachelog)
@@ -67,7 +68,7 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 		}
 
 		instrument.CachedFileCount.WithLabelValues(instrument.CACHED_FILE_CACHED_SUC).Inc()
-		glog.Warningf("Cached file %v", cachelog)
+		glog.Infof("Succeeded to create cache file %v", cachelog)
 		return NewBackStoreFile(wFile, originalFile, createInfo), nil
 	}
 	if err != nil {

@@ -325,6 +325,16 @@ var (
 			Help:      "Gauge of retry times",
 		},
 	)
+
+	VolumeInitError = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "dfs2_0",
+			Subsystem: "server",
+			Name:      "volume_error",
+			Help:      "counter of volume init error",
+		},
+		[]string{"volume"},
+	)
 )
 
 func init() {
@@ -354,6 +364,7 @@ func init() {
 	prometheus.MustRegister(CachedFileCount)
 	prometheus.MustRegister(CachedFileRetryTimes)
 	prometheus.MustRegister(CachedFileRetryTimesGauge)
+	prometheus.MustRegister(VolumeInitError)
 
 	// initialize
 	CachedFileCount.WithLabelValues(CACHED_FILE_CACHED_SUC).Add(0.0)

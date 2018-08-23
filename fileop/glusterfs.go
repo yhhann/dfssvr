@@ -16,10 +16,16 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
+	"jingoal.com/dfs/instrument"
 	"jingoal.com/dfs/meta"
 	"jingoal.com/dfs/metadata"
 	"jingoal.com/dfs/proto/transfer"
 	"jingoal.com/dfs/util"
+)
+
+const (
+	VOLUME_PENDING int = 0
+	VOLUME_OK      int = 1
 )
 
 // GlusterHandler implements DFSFileHandler.
@@ -32,6 +38,8 @@ type GlusterHandler struct {
 
 	*gfapi.Volume
 	VolLog string // Log file name of gluster volume
+
+	volumeState int
 }
 
 // Name returns handler's name.
@@ -57,6 +65,11 @@ func (h *GlusterHandler) makeSureLogDir() error {
 func (h *GlusterHandler) initVolume() error {
 	h.Volume = new(gfapi.Volume)
 
+	// for debug
+	for glog.V(100) {
+		time.Sleep(time.Second * 2)
+	}
+
 	if ret := h.Init(h.VolHost, h.VolName); ret != 0 {
 		return fmt.Errorf("init volume %s on %s error: %d\n", h.VolName, h.VolHost, ret)
 	}
@@ -71,6 +84,8 @@ func (h *GlusterHandler) initVolume() error {
 	if ret := h.Mount(); ret != 0 {
 		return fmt.Errorf("mount %s error: %d\n", h.VolName, ret)
 	}
+
+	h.volumeState = VOLUME_OK
 
 	return nil
 }
@@ -154,7 +169,7 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) 
 	f = file
 
 	// for debug
-	if glog.V(10) {
+	if glog.V(100) {
 		err = RecoverableFileError{
 			Code: GlusterFSFileError,
 			Orig: fmt.Errorf("debug when creating"),
@@ -166,9 +181,25 @@ func (h *GlusterHandler) Create(info *transfer.FileInfo) (f DFSFile, err error) 
 	return
 }
 
+func (h *GlusterHandler) checkVolume() error {
+	if h.volumeState == VOLUME_PENDING {
+		return RecoverableFileError{
+			Code: GlusterFSFileError,
+			Orig: fmt.Errorf("volume pending %s", h.Name()),
+		}
+	}
+
+	return nil
+}
+
 func (h *GlusterHandler) CreateGlusterFile(domain int64, fid string) (*gfapi.File, error) {
 	filePath := util.GetFilePath(h.VolBase, domain, fid, h.PathVersion, h.PathDigit)
 	dir := filepath.Dir(filePath)
+
+	if err := h.checkVolume(); err != nil {
+		return nil, err
+	}
+
 	if err := h.Volume.MkdirAll(dir, 0755); err != nil && !os.IsExist(err) {
 		glog.Warningf("Failed to create glusterfs dir, %s, %v", dir, err)
 		return nil, RecoverableFileError{
@@ -191,6 +222,10 @@ func (h *GlusterHandler) CreateGlusterFile(domain int64, fid string) (*gfapi.Fil
 
 // Open opens a file for read.
 func (h *GlusterHandler) Open(id string, domain int64) (f DFSFile, err error) {
+	if err := h.checkVolume(); err != nil {
+		return nil, err
+	}
+
 	session, gridfs := h.copySessionAndGridFS()
 	defer func() {
 		h.releaseSession(session, err)
@@ -285,6 +320,10 @@ func (h *GlusterHandler) Find(id string) (string, *DFSFileMeta, *transfer.FileIn
 
 // Remove deletes file by its id and domain.
 func (h *GlusterHandler) Remove(id string, domain int64) (bool, *meta.File, error) {
+	if err := h.checkVolume(); err != nil {
+		return false, nil, err
+	}
+
 	session, gridfs := h.copySessionAndGridFS()
 	defer func() {
 		h.ensureReleaseSession(session)
@@ -332,6 +371,10 @@ func (h *GlusterHandler) openGlusterFile(name string) (*GlusterFile, error) {
 
 // HealthStatus returns the status of node health.
 func (h *GlusterHandler) HealthStatus() int {
+	if err := h.checkVolume(); err != nil {
+		return StoreNotHealthy
+	}
+
 	if err := h.session.Ping(); err != nil {
 		return MetaNotHealthy
 	}
@@ -378,8 +421,26 @@ func NewGlusterHandler(shardInfo *metadata.Shard, volLog string) (*GlusterHandle
 		VolLog: volLog,
 	}
 
-	if err := handler.initVolume(); err != nil {
-		return nil, err
+	volumeSignal := make(chan struct{})
+	t := time.NewTimer(2 * time.Second)
+
+	go func() {
+		start := time.Now()
+		for err := handler.initVolume(); err != nil; {
+			instrument.VolumeInitError.WithLabelValues(handler.Name()).Inc()
+			glog.Errorf("Failed to initialize volume %s, elapse %v, %v.", handler.Name(), time.Since(start), err)
+			time.Sleep(5 * time.Second)
+		}
+
+		instrument.VolumeInitError.WithLabelValues(handler.Name()).Set(0.0)
+		glog.Infof("Succeeded to initialize volume %s, elapse %v.", handler.Name(), time.Since(start))
+		close(volumeSignal)
+	}()
+
+	select {
+	case <-t.C:
+		glog.Warningf("Volume %s is pending...", handler.Name())
+	case <-volumeSignal:
 	}
 
 	session, err := metadata.CopySession(shardInfo.Uri)
@@ -478,7 +539,6 @@ func (f GlusterFile) Write(p []byte) (int, error) {
 // Close closes an open GlusterFile.
 // Returns an error on failure.
 func (f GlusterFile) Close() error {
-	glog.Infof("GlusterFS close %v", f.info)
 	defer func() {
 		f.gridfs = nil
 		if f.session != nil {
@@ -505,7 +565,6 @@ func (f GlusterFile) Close() error {
 		return f.updateMetadata()
 	}
 
-	glog.Infof("GlusterFS closed %v", f.info)
 	return nil
 }
 

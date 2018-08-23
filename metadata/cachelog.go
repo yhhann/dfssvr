@@ -25,6 +25,7 @@ type CacheLog struct {
 	Fid        string        `bson:"fid"`        // fid
 	RetryTimes int64         `bson:"retrytimes"` // retry times
 	State      int64         `bson:"state"`      // state
+	Shard      string        `bson:"shard"`      // shard
 	Cause      string        `bson:"cause"`      // cause
 
 	CacheId        string `bson:"cachefid"`    // cached fid
@@ -33,8 +34,8 @@ type CacheLog struct {
 
 // String returns a string for CacheLog
 func (g *CacheLog) String() string {
-	return fmt.Sprintf("CacheLog[Fid %s, CacheId %s, Domain %d, ReTry %d, State %d, Cause '%s', %s]",
-		g.Fid, g.CacheId, g.Domain, g.RetryTimes, g.State, g.Cause, time.Unix(int64(g.Timestamp), 0).Format("2006-01-02 15:04:05"))
+	return fmt.Sprintf("CacheLog[Fid %s, CacheId %s, Domain %d, ReTry %d, State %d, Shard %s, Cause '%s', %s]",
+		g.Fid, g.CacheId, g.Domain, g.RetryTimes, g.State, g.Shard, g.Cause, time.Unix(int64(g.Timestamp), 0).Format("2006-01-02 15:04:05"))
 }
 
 type CacheLogIter struct {
@@ -109,6 +110,7 @@ func (op *CacheLogOp) SaveOrUpdate(log *CacheLog) (*CacheLog, error) {
 				"domain":      log.Domain,
 				"timestamp":   log.Timestamp,
 				"state":       log.State,
+				"shard":       log.Shard,
 				"cachefid":    log.CacheId,
 				"cachecksize": log.CacheChunkSize,
 				"cause":       log.Cause,

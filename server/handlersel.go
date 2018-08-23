@@ -26,10 +26,12 @@ var (
 	HealthCheckManually = flag.Bool("health-check-manually", true, "true for checking health manually.")
 
 	recoveryBufferSize = flag.Int("recovery-buffer-size", 100000, "size of channel for each DFSFileHandler.")
-	recoveryInterval   = flag.Int("recovery-interval", 60, "interval in seconds for recovery event inspection.")
+	recoveryInterval   = flag.Int("recovery-interval", 600, "interval in seconds for recovery event inspection.")
 	recoveryBatchSize  = flag.Int("recovery-batch-size", 100000, "batch size for recovery event inspection.")
 
 	segmentDeletion = flag.Bool("segment-deletion", false, "true for remove segment.")
+
+	daysKeepInCache = flag.Int("days-keep-in-cache", 90, "days for file to keep in cache.")
 )
 
 // FileRecoveryInfo represents the information for file recovery.
@@ -458,7 +460,7 @@ func (hs *HandlerSelector) startCachedFileRecoveryRoutine() {
 		}
 	}()
 
-	// Remove cached log 7 days ago.
+	// Remove cached log some days ago.
 	go func() {
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
@@ -468,8 +470,8 @@ func (hs *HandlerSelector) startCachedFileRecoveryRoutine() {
 			case <-ticker.C:
 				h := time.Now().Hour()
 				if h >= 1 && h < 2 {
-					glog.Infof("It's time to remove finished cache logs 7 days ago, %d", h)
-					cacheOp.RemoveFinishedCacheLogByTime(time.Now().AddDate(0, 0, -7).Unix())
+					glog.Infof("It's time to remove finished cache logs %d days ago.", *daysKeepInCache)
+					cacheOp.RemoveFinishedCacheLogByTime(time.Now().AddDate(0, 0, -*daysKeepInCache).Unix())
 				}
 			}
 		}
@@ -764,29 +766,28 @@ func copyCachedFile(glusterHandler *fileop.GlusterHandler, masterUri string, cac
 		}
 	}()
 
-	gFile, err := glusterHandler.CreateGlusterFile(cachelog.Domain, cachelog.Fid)
-
 	// for debug
-	if glog.V(10) {
-		err = fileop.RecoverableFileError{
-			Code: fileop.GlusterFSFileError,
-			Orig: fmt.Errorf("debug when recovering"),
-		}
-	}
-
-	if err != nil {
+	if glog.V(100) {
 		cacheOp.SaveOrUpdate(cachelog)
 		return metadata.CACHELOG_STATE_PENDING
 	}
-	gFile.Close()
+
+	gFile, err := glusterHandler.CreateGlusterFile(cachelog.Domain, cachelog.Fid)
+	if err != nil {
+		glog.Warningf("Failed to create gluster file while recovering, %v.", err)
+		cacheOp.SaveOrUpdate(cachelog)
+		return metadata.CACHELOG_STATE_PENDING
+	}
+	defer gFile.Close()
 
 	cachedFile, err := fileop.OpenCachedFile(cachelog.CacheId, cachelog.Domain, masterUri, cachelog.CacheChunkSize)
 	if err != nil {
+		glog.Warningf("Failed to open cache file while recovering, %v.", err)
 		cachelog.State = metadata.CACHELOG_STATE_SRC_DAMAGED
 		cacheOp.SaveOrUpdate(cachelog)
 		return metadata.CACHELOG_STATE_SRC_DAMAGED
 	}
-	cachedFile.Close()
+	defer cachedFile.Close()
 
 	// copy content from cached file to glusterfs file.
 	buf := make([]byte, 4096)
@@ -795,11 +796,8 @@ func copyCachedFile(glusterHandler *fileop.GlusterHandler, masterUri string, cac
 		if n > 0 {
 			_, err := gFile.Write(buf[:n])
 			if err != nil {
-				_, err := cacheOp.SaveOrUpdate(cachelog)
-				if err != nil {
-					glog.Warningf("Failed to save or update cache log %s.", cachelog)
-				}
-
+				cacheOp.SaveOrUpdate(cachelog)
+				glog.Warningf("Failed to copy while recovering, %v.", err)
 				return metadata.CACHELOG_STATE_PENDING
 			}
 		}
@@ -809,6 +807,7 @@ func copyCachedFile(glusterHandler *fileop.GlusterHandler, masterUri string, cac
 			return metadata.CACHELOG_STATE_FINISHED
 		}
 		if err != nil {
+			glog.Warningf("Failed to copy while recovering, %v.", err)
 			cachelog.State = metadata.CACHELOG_STATE_SRC_DAMAGED
 			cacheOp.SaveOrUpdate(cachelog)
 			return metadata.CACHELOG_STATE_SRC_DAMAGED
