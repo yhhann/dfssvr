@@ -63,12 +63,12 @@ func (bsh *BackStoreHandler) Create(info *transfer.FileInfo) (DFSFile, error) {
 		}
 		_, er = bsh.logOp.SaveOrUpdate(&cachelog)
 		if er != nil {
-			glog.Warningf("Failed to save cache log %+v, %v", cachelog, er)
+			glog.Warningf("Failed to save cache log %s, %v", cachelog, er)
 			return nil, er
 		}
 
 		instrument.CachedFileCount.WithLabelValues(instrument.CACHED_FILE_CACHED_SUC).Inc()
-		glog.Infof("Succeeded to create cache file %v", cachelog)
+		glog.Infof("Succeeded to create cache file %s", cachelog)
 		return NewBackStoreFile(wFile, originalFile, createInfo), nil
 	}
 	if err != nil {

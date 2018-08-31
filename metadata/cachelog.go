@@ -131,6 +131,17 @@ func (op *CacheLogOp) SaveOrUpdate(log *CacheLog) (*CacheLog, error) {
 	return result, nil
 }
 
+// GetFinishedCacheLogByTime gets cache logs by it's timestamp.
+func (op *CacheLogOp) GetFinishedCacheLogByTime(timestamp int64) ([]CacheLog, error) {
+	var result []CacheLog
+	err := op.execute(func(session *mgo.Session) error {
+		q := bson.M{"state": CACHELOG_STATE_FINISHED, "timestamp": bson.M{"$lte": timestamp}}
+		return session.DB(op.dbName).C(CACHELOG_COL).Find(q).All(result) // limit ?
+	})
+
+	return result, err
+}
+
 // RemoveFinishedCacheLogByTime removes cache logs by it's timestamp.
 func (op *CacheLogOp) RemoveFinishedCacheLogByTime(timestamp int64) error {
 	return op.execute(func(session *mgo.Session) error {

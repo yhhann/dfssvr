@@ -42,27 +42,6 @@ func (f streamFunc) withStreamDeadline(serviceName string, req interface{}, stre
 
 	defer func() {
 		if err != nil {
-			// TODO(hanyh): remove the commented code.
-			/*
-				switch e := err.(type) {
-				case *os.PathError:
-					if e.Err != nil {
-						glog.Infof("%s, path error: %s.", serviceName, e.Error())
-					} else {
-						glog.Infof("%s, path error: %s, %s.", serviceName, e.Op, e.Path)
-					}
-				case *os.SyscallError:
-					if e.Err != nil {
-						glog.Infof("%s, path error: %s.", serviceName, e.Error())
-					} else {
-						glog.Infof("%s, path error: %s.", serviceName, e.Syscall)
-					}
-				}
-				// End of debug code.
-			*/
-
-			// Trigger the panic if any.
-			// The triggered panic will be recovered by GRPC interceptor.
 			err.Error()
 		}
 	}()
@@ -175,7 +154,7 @@ func (f bizFunc) withDeadline(serviceName string, env interface{}, req interface
 func callBizFunc(f bizFunc, env interface{}, req interface{}, args []interface{}) (result bizResult) {
 	defer func() {
 		if r := recover(); r != nil {
-			glog.Warningf("%v\n%s", r, getStack())
+			glog.Warningf("Recovered from %v\n%s", r, getStack())
 			result.e = fmt.Errorf("%v", r)
 		}
 	}()
